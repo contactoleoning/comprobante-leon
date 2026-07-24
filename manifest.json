@@ -1,0 +1,16 @@
+{
+  "name": "Comprobante de Servicio — León Ingeniería",
+  "short_name": "Comprobante",
+  "description": "Comprobante de servicio técnico digital, enlazado a la ficha de cada cliente — León Ingeniería y Proyectos SpA",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0d0a",
+  "theme_color": "#0f0d0a",
+  "lang": "es-CL",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
