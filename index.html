@@ -354,12 +354,10 @@ footer.foot .links a:hover{ color:var(--gold); }
 
     <div class="section">
       <h2>Equipo</h2>
-      <div class="grid g3">
+      <div class="grid g4">
         <div class="field"><span class="lb">Marca equipo</span><input id="eMarca"/></div>
         <div class="field"><span class="lb">Tipo refrigerante</span><input id="eRefri"/></div>
         <div class="field"><span class="lb">Modelo</span><input id="eModelo"/></div>
-        <div class="field"><span class="lb">Tipo aceite</span><input id="eAceite"/></div>
-        <div class="field"><span class="lb">Serial</span><input class="num" id="eSerial"/></div>
         <div class="field"><span class="lb">Nombre técnicos</span><input id="eTecnicos"/></div>
       </div>
     </div>
@@ -636,7 +634,7 @@ let fechaISOActual = hoyISOChile();
 
 function limpiarFormulario(){
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
-  ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eAceite','eSerial','eTecnicos',
+  ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc','tTSeteo','tTIny','tTRet',
    'trabajo','obs','hIn','hOut','aNombre','aRut','nS1','nS2','nS3'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = (c.value==='Mantención'));
@@ -698,8 +696,6 @@ function recolectarComprobante(){
       marca: document.getElementById('eMarca').value.trim(),
       refrigerante: document.getElementById('eRefri').value.trim(),
       modelo: document.getElementById('eModelo').value.trim(),
-      aceite: document.getElementById('eAceite').value.trim(),
-      serial: document.getElementById('eSerial').value.trim(),
       tecnicos: document.getElementById('eTecnicos').value.trim(),
     },
     parametros: {
