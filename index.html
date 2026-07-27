@@ -193,7 +193,6 @@ body{line-height:1.5}
 .vencrow{ display:flex; align-items:center; gap:10px; background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:10px 12px; margin-top:12px; font-size:12.5px; }
 .vencrow b{ color:var(--paper-ink); }
 
-.authbox{ background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:14px 16px; }
 
 .sign-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
 .sign-box{ display:flex; flex-direction:column; gap:6px; }
@@ -396,15 +395,6 @@ footer.foot .links a:hover{ color:var(--gold); }
       </div>
     </div>
 
-    <div class="section">
-      <h2>Autorización</h2>
-      <div class="authbox">
-        <div class="grid g2">
-          <div class="field"><span class="lb">Nombre (autoriza)</span><input id="aNombre"/></div>
-          <div class="field"><span class="lb">R.U.T.</span><input id="aRut"/></div>
-        </div>
-      </div>
-    </div>
 
     <div class="section">
       <h2>Firmas</h2>
@@ -638,7 +628,7 @@ function limpiarFormulario(){
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
-   'trabajo','obs','hIn','hOut','aNombre','aRut','nS1','nS2','nS3'].forEach(id=>{ document.getElementById(id).value=''; });
+   'trabajo','obs','hIn','hOut','nS1','nS2','nS3'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = (c.value==='Mantención'));
   toggleVencRow();
   ['s1','s2','s3'].forEach(id=>{ const p=pads[id]; p.ctx.clearRect(0,0,p.canvas.width,p.canvas.height); p.used=false; });
@@ -714,7 +704,6 @@ function recolectarComprobante(){
     observacion: document.getElementById('obs').value.trim(),
     horaIngreso: document.getElementById('hIn').value,
     horaSalida: document.getElementById('hOut').value,
-    autorizacion: { nombre: document.getElementById('aNombre').value.trim(), rut: document.getElementById('aRut').value.trim() },
     firmas: {
       supervisor: { nombre: document.getElementById('nS1').value.trim(), img: pads.s1.used ? pads.s1.canvas.toDataURL('image/png') : null },
       tecnico:    { nombre: document.getElementById('nS2').value.trim(), img: pads.s2.used ? pads.s2.canvas.toDataURL('image/png') : null },
