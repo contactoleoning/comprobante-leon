@@ -368,10 +368,8 @@ footer.foot .links a:hover{ color:var(--gold); }
         <table class="tech-table"><tbody>
           <tr><td>A. Compresor</td><td><input class="num" id="tAComp"/></td><td>Presión succión</td><td><input class="num" id="tPresSuc"/></td></tr>
           <tr><td>A. Vent. IDM</td><td><input class="num" id="tAVentIdm"/></td><td>Presión descarga</td><td><input class="num" id="tPresDesc"/></td></tr>
-          <tr><td>A. Vent. ODM</td><td><input class="num" id="tAVentOdm"/></td><td>T° Seteo</td><td><input class="num" id="tTSeteo"/></td></tr>
-          <tr><td>Voltaje / Hz</td><td><input class="num" id="tVoltaje"/></td><td>T° Inyección</td><td><input class="num" id="tTIny"/></td></tr>
-          <tr><td>Carga por placa</td><td><input class="num" id="tCargaPlaca"/></td><td>T° Retorno</td><td><input class="num" id="tTRet"/></td></tr>
-          <tr><td>Carga realizada</td><td><input class="num" id="tCargaReal"/></td><td>&nbsp;</td><td></td></tr>
+          <tr><td>A. Vent. ODM</td><td><input class="num" id="tAVentOdm"/></td><td>Voltaje / Hz</td><td><input class="num" id="tVoltaje"/></td></tr>
+          <tr><td>Carga por placa</td><td><input class="num" id="tCargaPlaca"/></td><td>Carga realizada</td><td><input class="num" id="tCargaReal"/></td></tr>
         </tbody></table>
       </div>
     </div>
@@ -635,7 +633,7 @@ let fechaISOActual = hoyISOChile();
 function limpiarFormulario(){
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
-   'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc','tTSeteo','tTIny','tTRet',
+   'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
    'trabajo','obs','hIn','hOut','aNombre','aRut','nS1','nS2','nS3'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = (c.value==='Mantención'));
   toggleVencRow();
@@ -707,9 +705,6 @@ function recolectarComprobante(){
       cargaReal: document.getElementById('tCargaReal').value.trim(),
       presionSuc: document.getElementById('tPresSuc').value.trim(),
       presionDesc: document.getElementById('tPresDesc').value.trim(),
-      tSeteo: document.getElementById('tTSeteo').value.trim(),
-      tIny: document.getElementById('tTIny').value.trim(),
-      tRet: document.getElementById('tTRet').value.trim(),
     },
     trabajo: document.getElementById('trabajo').value.trim(),
     observacion: document.getElementById('obs').value.trim(),
