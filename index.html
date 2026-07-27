@@ -108,11 +108,15 @@ body{line-height:1.5}
 }
 .num{ font-family:'Barlow Condensed',ui-monospace,monospace; font-variant-numeric:tabular-nums; letter-spacing:.02em; }
 
-.head{ display:grid; grid-template-columns:1fr auto; gap:16px; padding:22px 26px; border-bottom:2px solid var(--paper-ink); }
-.brand{ display:flex; gap:12px; align-items:center; }
-.brand img{ height:64px; width:auto; flex:none; }
-.brand .meta{ font-size:11.5px; color:var(--paper-faint); display:grid; gap:2px; margin-top:2px; }
-.brand .meta input{ border:none; background:transparent; color:var(--paper-faint); font:inherit; padding:1px 0; width:100%; }
+.head{ display:grid; grid-template-columns:1fr auto; gap:16px; padding:26px 28px 24px; border-bottom:2px solid var(--paper-ink); }
+.brand{ display:flex; gap:18px; align-items:flex-start; }
+.brand img{ height:76px; width:auto; flex:none; margin-top:1px; }
+.brand h1{ font-size:16px; font-weight:700; letter-spacing:.01em; color:var(--paper-ink); font-family:'Barlow Condensed',sans-serif; }
+.brand .tag{ font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--paper-muted); margin-top:2px; }
+.brand .meta{ font-size:11.5px; color:var(--paper-muted); display:grid; gap:4px; margin-top:9px; }
+.meta-row{ display:grid; grid-template-columns:50px 1fr; gap:10px; align-items:baseline; }
+.meta-row .meta-lb{ font-weight:700; color:var(--paper-faint); font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; }
+.brand .meta input{ border:none; background:transparent; color:var(--paper-muted); font:inherit; padding:1px 0; width:100%; }
 .brand .meta input:focus-visible{ outline:1px dashed var(--paper-muted); outline-offset:2px; color:var(--paper-ink); }
 
 .doctitle{ text-align:right; }
@@ -149,9 +153,24 @@ body{line-height:1.5}
 .field textarea{ resize:vertical; font-family:inherit; }
 
 .motivos{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px 18px; }
-.chk{ display:flex; align-items:center; gap:8px; font-size:13px; padding:5px 2px; border-bottom:1px dotted var(--paper-line); }
-.chk input{ width:15px; height:15px; accent-color:var(--paper-muted); }
+.chk{ display:flex; align-items:center; gap:9px; font-size:13px; padding:6px 2px; border-bottom:1px dotted var(--paper-line); }
 .chk .other-txt{ flex:1; border:none; border-bottom:1px solid var(--paper-line); background:transparent; font:inherit; color:var(--paper-ink); padding:1px 2px; }
+
+/* checkbox a medida: el estilo nativo del sistema imprime distinto entre
+   navegadores (a veces como cuadro sólido), así que se dibuja a mano para
+   que se vea igual en pantalla, PDF e impresión. */
+.sheet input[type="checkbox"]{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  width:15px; height:15px; flex:none; margin:0; position:relative;
+  border:1.5px solid var(--paper-line2); border-radius:3px; background:var(--paper);
+  -webkit-print-color-adjust:exact; print-color-adjust:exact;
+}
+.sheet input[type="checkbox"]:checked{ background:var(--paper-ink); border-color:var(--paper-ink); }
+.sheet input[type="checkbox"]:checked::after{
+  content:""; position:absolute; left:4px; top:1px; width:4px; height:8px;
+  border:solid var(--paper); border-width:0 2px 2px 0; transform:rotate(45deg);
+}
+.sheet input[type="checkbox"]:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
 
 .tech-wrap{ overflow-x:auto; }
 .tech-table{ width:100%; border-collapse:collapse; font-size:12.5px; }
@@ -168,7 +187,6 @@ body{line-height:1.5}
 .hora-row .field{ flex:1; }
 
 .vencrow{ display:flex; align-items:center; gap:10px; background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:10px 12px; margin-top:12px; font-size:12.5px; }
-.vencrow input{ width:16px; height:16px; }
 .vencrow b{ color:var(--paper-ink); }
 
 .authbox{ background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:14px 16px; }
@@ -205,12 +223,14 @@ footer.foot .links a:hover{ color:var(--gold); }
 }
 
 @media print{
+  *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   body{ background:#fff; }
   .topbar,.toolbar,.card,footer.foot,.hint,.clear-sig,.toast{ display:none !important; }
   .wrap{ padding:0; max-width:100%; }
   .sheet{ box-shadow:none; }
   .section{ break-inside:avoid; }
   input,textarea,select{ border-color:#999 !important; color:#000 !important; }
+  textarea{ resize:none !important; }
 }
 </style>
 </head>
@@ -264,10 +284,15 @@ footer.foot .links a:hover{ color:var(--gold); }
     <div class="head">
       <div class="brand">
         <img src="logo-header.png" alt="León Ingeniería y Proyectos SpA"/>
-        <div class="meta">
-          <div>R.U.T. <input id="empRut" value="77.242.599-6"/></div>
-          <div><input id="empDir" value="Islas Guaitecas #936 MZ E 1, Las Condes, Santiago"/></div>
-          <div>Fono <input id="empFono" value="+569 6371 0820"/> · <input id="empWeb" value="contactoleoning@gmail.com" style="width:auto;flex:1"/></div>
+        <div>
+          <h1>León Ingeniería y Proyectos SpA</h1>
+          <div class="tag">Climatización · Aire acondicionado · Calefacción</div>
+          <div class="meta">
+            <div class="meta-row"><span class="meta-lb">R.U.T.</span><input id="empRut" value="77.242.599-6"/></div>
+            <div class="meta-row"><span class="meta-lb">Dirección</span><input id="empDir" value="Islas Guaitecas #936 MZ E 1, Las Condes"/></div>
+            <div class="meta-row"><span class="meta-lb">Fono</span><input id="empFono" value="+569 6371 0820"/></div>
+            <div class="meta-row"><span class="meta-lb">Email</span><input id="empWeb" value="contactoleoning@gmail.com"/></div>
+          </div>
         </div>
       </div>
       <div class="doctitle">
@@ -461,6 +486,7 @@ function initFirebase(){
     firebase.auth().signInAnonymously().then(function(){
       db = firebase.database(app);
       escucharClientes();
+      if(!MODO_PRUEBA) reservarFolio();
       firebase.database().ref('.info/connected').on('value', snap=>{
         if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
       });
@@ -623,9 +649,15 @@ function limpiarFormulario(){
 // entre dos dispositivos reservando el mismo número a la vez).
 // ═══════════════════════════════════════
 function reservarFolio(){
-  if(MODO_PRUEBA || !db){
+  if(MODO_PRUEBA){
     folioReservado = 'PRUEBA-' + Date.now().toString().slice(-5);
     document.getElementById('folioVal').textContent = folioReservado;
+    return;
+  }
+  if(!db){
+    // Firebase aún no termina de conectar (auth anónima es asíncrona) —
+    // se reintenta apenas quede lista, ver initFirebase().
+    document.getElementById('folioVal').textContent = 'reservando…';
     return;
   }
   db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||100)+1).then(res=>{
@@ -633,6 +665,7 @@ function reservarFolio(){
     document.getElementById('folioVal').textContent = String(folioReservado).padStart(6,'0');
   }).catch(err=>{
     console.error('No se pudo reservar folio:', err);
+    document.getElementById('folioVal').textContent = 'sin conexión';
     toast('No se pudo reservar el N° de comprobante — revisa tu conexión');
   });
 }
