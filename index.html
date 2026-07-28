@@ -206,14 +206,6 @@ body{line-height:1.5}
 .vencrow b{ color:var(--paper-ink); }
 
 
-.sign-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
-.sign-box{ display:flex; flex-direction:column; gap:6px; }
-.sign-box canvas{ width:100%; height:96px; border:1px solid var(--paper-line2); border-radius:4px; background:var(--paper); touch-action:none; cursor:crosshair; }
-.sign-caption{ display:flex; justify-content:space-between; align-items:center; }
-.sign-caption .lb{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--paper-muted); }
-.clear-sig{ font-size:10.5px; color:var(--paper-faint); background:none; border:none; cursor:pointer; text-decoration:underline; padding:0; }
-.clear-sig:hover{ color:var(--red); }
-.sign-name{ border:none; border-top:1px solid var(--paper-line); background:transparent; font:inherit; font-size:12px; color:var(--paper-muted); text-align:center; padding-top:4px; width:100%; }
 
 .hint{ font-size:11px; color:var(--paper-faint); margin-top:6px; }
 .hint b{ color:var(--red); font-weight:700; }
@@ -233,7 +225,7 @@ footer.foot .links a:hover{ color:var(--gold); }
 @media (max-width:720px){
   .head{ grid-template-columns:1fr; } .doctitle{ text-align:left; }
   .datebox,.folio{ justify-content:flex-start; }
-  .g2,.g3,.g4,.sign-grid{ grid-template-columns:1fr; }
+  .g2,.g3,.g4{ grid-template-columns:1fr; }
   .band{ grid-template-columns:1fr; }
   .band-col + .band-col{ border-left:none; border-top:1px solid var(--paper-line); }
   .picker-row{ flex-direction:column; align-items:stretch; }
@@ -245,7 +237,7 @@ footer.foot .links a:hover{ color:var(--gold); }
   *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
   html{ font-size:14px; }
   body{ background:#fff; }
-  .topbar,.toolbar,.card,footer.foot,.hint,.clear-sig,.toast{ display:none !important; }
+  .topbar,.toolbar,.card,footer.foot,.hint,.toast{ display:none !important; }
   .wrap{ padding:0; max-width:100%; }
   .sheet{ box-shadow:none; font-size:12px; line-height:1.15; }
   .section{ break-inside:avoid; padding:5px 18px !important; }
@@ -288,11 +280,6 @@ footer.foot .links a:hover{ color:var(--gold); }
   .obs textarea{ min-height:26px !important; }
 
   .hora-row{ gap:14px !important; }
-
-  .sign-grid{ gap:10px !important; }
-  .sign-box{ gap:1px !important; }
-  .sign-box canvas{ height:40px !important; }
-  .sign-name{ font-size:10px !important; padding-top:1px !important; }
 }
 </style>
 </head>
@@ -459,28 +446,6 @@ footer.foot .links a:hover{ color:var(--gold); }
     </div>
 
 
-    <div class="section">
-      <h2>Firmas</h2>
-      <div class="sign-grid">
-        <div class="sign-box">
-          <div class="sign-caption"><span class="lb">Supervisor</span><button type="button" class="clear-sig" data-c="s1">borrar</button></div>
-          <canvas id="s1"></canvas>
-          <input class="sign-name" id="nS1" placeholder="Nombre supervisor"/>
-        </div>
-        <div class="sign-box">
-          <div class="sign-caption"><span class="lb">Técnico</span><button type="button" class="clear-sig" data-c="s2">borrar</button></div>
-          <canvas id="s2"></canvas>
-          <input class="sign-name" id="nS2" placeholder="Nombre técnico"/>
-        </div>
-        <div class="sign-box">
-          <div class="sign-caption"><span class="lb">Cliente</span><button type="button" class="clear-sig" data-c="s3">borrar</button></div>
-          <canvas id="s3"></canvas>
-          <input class="sign-name" id="nS3" placeholder="Nombre cliente"/>
-        </div>
-      </div>
-      <div class="hint">Firme con el dedo o mouse.</div>
-    </div>
-
   </div>
 </div>
 
@@ -625,38 +590,6 @@ function toggleVencRow(){
 }
 
 // ═══════════════════════════════════════
-// FIRMAS
-// ═══════════════════════════════════════
-const pads = {};
-function setupPad(id){
-  const canvas = document.getElementById(id);
-  const ctx = canvas.getContext('2d');
-  function resize(){
-    const rect = canvas.getBoundingClientRect();
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = rect.width * ratio; canvas.height = rect.height * ratio;
-    ctx.scale(ratio, ratio); ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.strokeStyle = '#201a10';
-  }
-  resize();
-  let drawing=false, last=null;
-  function pos(e){ const rect=canvas.getBoundingClientRect(); const p=e.touches?e.touches[0]:e; return {x:p.clientX-rect.left, y:p.clientY-rect.top}; }
-  function start(e){ drawing=true; last=pos(e); pads[id].used=true; e.preventDefault(); }
-  function move(e){ if(!drawing) return; const p=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p.x,p.y); ctx.stroke(); last=p; e.preventDefault(); }
-  function end(){ drawing=false; }
-  canvas.addEventListener('mousedown', start);
-  canvas.addEventListener('mousemove', move);
-  window.addEventListener('mouseup', end);
-  canvas.addEventListener('touchstart', start, {passive:false});
-  canvas.addEventListener('touchmove', move, {passive:false});
-  canvas.addEventListener('touchend', end);
-  pads[id] = { canvas, ctx, used:false };
-  document.querySelector('.clear-sig[data-c="'+id+'"]').addEventListener('click', function(){
-    ctx.clearRect(0,0,canvas.width,canvas.height); pads[id].used=false;
-  });
-}
-['s1','s2','s3'].forEach(setupPad);
-
-// ═══════════════════════════════════════
 // UTILIDADES
 // ═══════════════════════════════════════
 function escHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -691,10 +624,9 @@ function limpiarFormulario(){
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
-   'trabajo','obs','hIn','hOut','nS1','nS2','nS3'].forEach(id=>{ document.getElementById(id).value=''; });
+   'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = (c.value==='Mantención'));
   toggleVencRow();
-  ['s1','s2','s3'].forEach(id=>{ const p=pads[id]; p.ctx.clearRect(0,0,p.canvas.width,p.canvas.height); p.used=false; });
 }
 
 // ═══════════════════════════════════════
@@ -767,11 +699,6 @@ function recolectarComprobante(){
     observacion: document.getElementById('obs').value.trim(),
     horaIngreso: document.getElementById('hIn').value,
     horaSalida: document.getElementById('hOut').value,
-    firmas: {
-      supervisor: { nombre: document.getElementById('nS1').value.trim(), img: pads.s1.used ? pads.s1.canvas.toDataURL('image/png') : null },
-      tecnico:    { nombre: document.getElementById('nS2').value.trim(), img: pads.s2.used ? pads.s2.canvas.toDataURL('image/png') : null },
-      cliente:    { nombre: document.getElementById('nS3').value.trim(), img: pads.s3.used ? pads.s3.canvas.toDataURL('image/png') : null },
-    },
     creadoEn: MODO_PRUEBA ? null : Date.now(),
   };
 }
