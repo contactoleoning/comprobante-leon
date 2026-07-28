@@ -713,7 +713,7 @@ function reservarFolio(){
     document.getElementById('folioVal').textContent = 'reservando…';
     return;
   }
-  db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||100)+1).then(res=>{
+  db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||147)+1).then(res=>{
     folioReservado = res.snapshot.val();
     document.getElementById('folioVal').textContent = String(folioReservado).padStart(6,'0');
   }).catch(err=>{
