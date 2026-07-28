@@ -380,7 +380,7 @@ footer.foot .links a:hover{ color:var(--gold); }
           <label class="chk"><input type="checkbox" value="Contrato"/> Contrato</label>
           <label class="chk"><input type="checkbox" value="Llamado de emergencia"/> Llamado de emergencia</label>
           <label class="chk"><input type="checkbox" value="Reparación"/> Reparación</label>
-          <label class="chk"><input type="checkbox" value="Mantención" checked onchange="toggleVencRow()"/> Mantención</label>
+          <label class="chk"><input type="checkbox" value="Mantención" onchange="toggleVencRow()"/> Mantención</label>
           <label class="chk"><input type="checkbox" value="Inspección"/> Inspección</label>
           <label class="chk"><input type="checkbox" value="Puesta en marcha"/> Puesta en marcha</label>
           <label class="chk"><input type="checkbox" value="Garantía"/> Garantía</label>
@@ -625,7 +625,7 @@ function limpiarFormulario(){
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
    'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
-  document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = (c.value==='Mantención'));
+  document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = false);
   toggleVencRow();
 }
 
