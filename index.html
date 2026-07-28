@@ -225,15 +225,57 @@ footer.foot .links a:hover{ color:var(--gold); }
   .picker-row{ flex-direction:column; align-items:stretch; }
 }
 
+/* ── IMPRESIÓN — todo el documento comprimido para entrar en una sola hoja carta ── */
+@page{ size:letter; margin:8mm 10mm; }
 @media print{
   *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+  html{ font-size:14px; }
   body{ background:#fff; }
   .topbar,.toolbar,.card,footer.foot,.hint,.clear-sig,.toast{ display:none !important; }
   .wrap{ padding:0; max-width:100%; }
-  .sheet{ box-shadow:none; }
-  .section{ break-inside:avoid; }
+  .sheet{ box-shadow:none; font-size:12px; line-height:1.25; }
+  .section{ break-inside:avoid; padding:5px 18px !important; }
   input,textarea,select{ border-color:#999 !important; color:#000 !important; }
   textarea{ resize:none !important; }
+
+  .head{ padding:8px 18px !important; gap:10px !important; }
+  .brand{ gap:10px !important; }
+  .brand img{ height:46px !important; margin-top:0 !important; }
+  .brand h1{ font-size:13px !important; }
+  .brand .tag{ font-size:8px !important; margin-top:1px !important; }
+  .brand .meta{ font-size:9.5px !important; gap:1px !important; margin-top:4px !important; }
+  .meta-row{ grid-template-columns:52px 1fr !important; gap:6px !important; }
+  .meta-row .meta-lb{ font-size:8px !important; letter-spacing:.01em !important; }
+  .doctitle .name{ font-size:13px !important; }
+  .folio{ padding:3px 8px !important; margin-top:5px !important; }
+  .folio .val{ font-size:13px !important; }
+  .datebox{ margin-top:5px !important; gap:3px !important; }
+  .datebox input{ padding:2px !important; }
+
+  .section h2{ font-size:9.5px !important; margin-bottom:4px !important; }
+  .grid{ gap:3px 12px !important; }
+  .field .lb{ font-size:8.5px !important; }
+  .field input,.field select,.field textarea{ padding:2px 6px !important; font-size:11.5px !important; }
+
+  .motivos{ gap:1px 12px !important; }
+  .chk{ padding:1px 2px !important; font-size:11px !important; gap:6px !important; }
+  .sheet input[type="checkbox"]{ width:11px !important; height:11px !important; }
+  .sheet input[type="checkbox"]:checked::after{ left:2.5px !important; top:0 !important; width:3px !important; height:6px !important; }
+  .vencrow{ padding:4px 9px !important; margin-top:4px !important; font-size:10.5px !important; gap:6px !important; }
+
+  .tech-table{ font-size:10.5px !important; }
+  .tech-table td{ padding:1.5px 6px !important; }
+  .tech-table td:first-child{ width:150px !important; }
+
+  .worklines textarea{ min-height:40px !important; background-image:repeating-linear-gradient(#fff 0 14px, var(--paper-line) 14px 15px) !important; }
+  .obs textarea{ min-height:26px !important; }
+
+  .hora-row{ gap:14px !important; }
+
+  .sign-grid{ gap:10px !important; }
+  .sign-box{ gap:1px !important; }
+  .sign-box canvas{ height:40px !important; }
+  .sign-name{ font-size:10px !important; padding-top:1px !important; }
 }
 </style>
 </head>
