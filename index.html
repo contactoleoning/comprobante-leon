@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="color-scheme" content="light dark"/>
 <title>Comprobante de Servicio — León Ingeniería</title>
 <link rel="manifest" href="manifest.json"/>
 <link rel="apple-touch-icon" href="apple-touch-icon.png"/>
@@ -103,7 +104,7 @@ body{line-height:1.5}
 
 /* ── EL PAPEL ── */
 .sheet{
-  color-scheme:light; /* la app es oscura, pero el "papel" no — sin esto los
+  color-scheme:light only; /* la app es oscura, pero el "papel" no — sin esto los
     inputs/textareas que no están dentro de .field (ej. #trabajo, #obs)
     heredan la apariencia nativa oscura del navegador y salen con fondo
     negro en vez de blanco. */
@@ -118,7 +119,7 @@ body{line-height:1.5}
 .brand h1{ font-size:16px; font-weight:700; letter-spacing:.01em; color:var(--paper-ink); font-family:'Barlow Condensed',sans-serif; }
 .brand .tag{ font-size:9.5px; font-weight:700; letter-spacing:.09em; text-transform:uppercase; color:var(--paper-muted); margin-top:2px; }
 .brand .meta{ font-size:11.5px; color:var(--paper-muted); display:grid; gap:4px; margin-top:9px; }
-.meta-row{ display:grid; grid-template-columns:50px 1fr; gap:10px; align-items:baseline; }
+.meta-row{ display:grid; grid-template-columns:68px 1fr; gap:8px; align-items:baseline; }
 .meta-row .meta-lb{ font-weight:700; color:var(--paper-faint); font-size:9.5px; letter-spacing:.04em; text-transform:uppercase; }
 .brand .meta input{ border:none; background:transparent; color:var(--paper-muted); font:inherit; padding:1px 0; width:100%; }
 .brand .meta input:focus-visible{ outline:1px dashed var(--paper-muted); outline-offset:2px; color:var(--paper-ink); }
