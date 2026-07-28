@@ -63,7 +63,7 @@ body{line-height:1.5}
 }
 .nav-links a:hover{ color:var(--gold); border-color:var(--gold); }
 
-.wrap{ max-width:960px; margin:0 auto; padding:16px 14px 60px; }
+.wrap{ max-width:1180px; margin:0 auto; padding:16px 14px 60px; }
 
 /* ── card oscuro genérico (picker, toolbar) ── */
 .card{ background:var(--bg2); border:2px solid var(--brd); border-radius:var(--r); padding:14px; margin-bottom:14px; }
@@ -146,7 +146,13 @@ body{line-height:1.5}
 .section h2::after{ content:""; height:1px; flex:1; background:var(--paper-line); }
 
 .grid{ display:grid; gap:10px 16px; }
-.g2{ grid-template-columns:1fr 1fr; } .g3{ grid-template-columns:1fr 1fr 1fr; } .g4{ grid-template-columns:repeat(4,1fr); }
+.g1{ grid-template-columns:1fr; } .g2{ grid-template-columns:1fr 1fr; } .g3{ grid-template-columns:1fr 1fr 1fr; } .g4{ grid-template-columns:repeat(4,1fr); }
+
+/* ── BANDAS de dos columnas (como el papel: lista angosta a la izquierda,
+   bloque más ancho a la derecha, con un divisor vertical) ── */
+.band{ display:grid; grid-template-columns:230px 1fr; padding:0 !important; }
+.band-col{ padding:16px 22px; }
+.band-col + .band-col{ border-left:1px solid var(--paper-line); }
 .field{ display:flex; flex-direction:column; gap:3px; }
 .field .lb{ font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--paper-muted); }
 .field input, .field select, .field textarea{
@@ -156,7 +162,7 @@ body{line-height:1.5}
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible{ outline:2px solid var(--gold); outline-offset:1px; }
 .field textarea{ resize:vertical; font-family:inherit; }
 
-.motivos{ display:grid; grid-template-columns:repeat(3,1fr); gap:7px 18px; }
+.motivos{ display:flex; flex-direction:column; }
 .chk{ display:flex; align-items:center; gap:9px; font-size:13px; padding:6px 2px; border-bottom:1px dotted var(--paper-line); }
 .chk .other-txt{ flex:1; border:none; border-bottom:1px solid var(--paper-line); background:transparent; font:inherit; color:var(--paper-ink); padding:1px 2px; }
 
@@ -194,7 +200,8 @@ body{line-height:1.5}
 .hora-row{ display:flex; gap:24px; }
 .hora-row .field{ flex:1; }
 
-.vencrow{ display:flex; align-items:center; gap:10px; background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:10px 12px; margin-top:12px; font-size:12.5px; }
+.vencrow{ display:flex; align-items:center; gap:10px; background:var(--paper-stripe); border:1px solid var(--paper-line2); border-radius:4px; padding:10px 12px; font-size:12.5px; }
+.band .vencrow{ grid-column:1/-1; margin:0 22px 16px; }
 .vencrow b{ color:var(--paper-ink); }
 
 
@@ -225,7 +232,9 @@ footer.foot .links a:hover{ color:var(--gold); }
 @media (max-width:720px){
   .head{ grid-template-columns:1fr; } .doctitle{ text-align:left; }
   .datebox,.folio{ justify-content:flex-start; }
-  .g2,.g3,.g4,.motivos,.sign-grid{ grid-template-columns:1fr; }
+  .g2,.g3,.g4,.sign-grid{ grid-template-columns:1fr; }
+  .band{ grid-template-columns:1fr; }
+  .band-col + .band-col{ border-left:none; border-top:1px solid var(--paper-line); }
   .picker-row{ flex-direction:column; align-items:stretch; }
 }
 
@@ -237,8 +246,10 @@ footer.foot .links a:hover{ color:var(--gold); }
   body{ background:#fff; }
   .topbar,.toolbar,.card,footer.foot,.hint,.clear-sig,.toast{ display:none !important; }
   .wrap{ padding:0; max-width:100%; }
-  .sheet{ box-shadow:none; font-size:12px; line-height:1.25; }
+  .sheet{ box-shadow:none; font-size:12px; line-height:1.15; }
   .section{ break-inside:avoid; padding:5px 18px !important; }
+  .band{ padding:0 !important; }
+  .band-col{ padding:4px 16px !important; }
   input,textarea,select{ border-color:#999 !important; color:#000 !important; }
   textarea{ resize:none !important; }
 
@@ -256,16 +267,17 @@ footer.foot .links a:hover{ color:var(--gold); }
   .datebox{ margin-top:5px !important; gap:3px !important; }
   .datebox input{ padding:2px !important; }
 
-  .section h2{ font-size:9.5px !important; margin-bottom:4px !important; }
+  .section h2{ font-size:9.5px !important; margin-bottom:3px !important; }
   .grid{ gap:3px 12px !important; }
   .field .lb{ font-size:8.5px !important; }
   .field input,.field select,.field textarea{ padding:2px 6px !important; font-size:11.5px !important; }
 
   .motivos{ gap:1px 12px !important; }
-  .chk{ padding:1px 2px !important; font-size:11px !important; gap:6px !important; }
+  .chk{ padding:0 2px !important; font-size:11px !important; gap:6px !important; }
   .sheet input[type="checkbox"]{ width:11px !important; height:11px !important; }
   .sheet input[type="checkbox"]:checked::after{ left:2.5px !important; top:0 !important; width:3px !important; height:6px !important; }
-  .vencrow{ padding:4px 9px !important; margin-top:4px !important; font-size:10.5px !important; gap:6px !important; }
+  .vencrow{ padding:4px 9px !important; font-size:10.5px !important; gap:6px !important; }
+  .band .vencrow{ margin:0 16px 6px !important; }
 
   .tech-table{ font-size:10.5px !important; }
   .tech-table td{ padding:1.5px 6px !important; }
@@ -372,18 +384,31 @@ footer.foot .links a:hover{ color:var(--gold); }
       </div>
     </div>
 
-    <div class="section">
-      <h2>Motivo de visita</h2>
-      <div class="motivos" id="motivos">
-        <label class="chk"><input type="checkbox" value="Instalación"/> Instalación</label>
-        <label class="chk"><input type="checkbox" value="Reparación"/> Reparación</label>
-        <label class="chk"><input type="checkbox" value="Puesta en marcha"/> Puesta en marcha</label>
-        <label class="chk"><input type="checkbox" value="Contrato"/> Contrato</label>
-        <label class="chk"><input type="checkbox" value="Mantención" checked onchange="toggleVencRow()"/> Mantención</label>
-        <label class="chk"><input type="checkbox" value="Garantía"/> Garantía</label>
-        <label class="chk"><input type="checkbox" value="Llamado de emergencia"/> Llamado de emergencia</label>
-        <label class="chk"><input type="checkbox" value="Inspección"/> Inspección</label>
-        <label class="chk"><input type="checkbox" value="Otros"/> Otros <input class="other-txt" id="motivoOtro" placeholder="especificar"/></label>
+    <div class="section band">
+      <div class="band-col">
+        <h2>Motivo de visita</h2>
+        <div class="motivos" id="motivos">
+          <label class="chk"><input type="checkbox" value="Instalación"/> Instalación</label>
+          <label class="chk"><input type="checkbox" value="Contrato"/> Contrato</label>
+          <label class="chk"><input type="checkbox" value="Llamado de emergencia"/> Llamado de emergencia</label>
+          <label class="chk"><input type="checkbox" value="Reparación"/> Reparación</label>
+          <label class="chk"><input type="checkbox" value="Mantención" checked onchange="toggleVencRow()"/> Mantención</label>
+          <label class="chk"><input type="checkbox" value="Inspección"/> Inspección</label>
+          <label class="chk"><input type="checkbox" value="Puesta en marcha"/> Puesta en marcha</label>
+          <label class="chk"><input type="checkbox" value="Garantía"/> Garantía</label>
+          <label class="chk"><input type="checkbox" value="Otros"/> Otros <input class="other-txt" id="motivoOtro" placeholder="especificar"/></label>
+        </div>
+      </div>
+      <div class="band-col">
+        <h2>Facturación</h2>
+        <div class="grid g1">
+          <div class="field"><span class="lb">Monto a facturar</span><input class="num" id="fMonto" placeholder="$"/></div>
+          <div class="field"><span class="lb">Servicio a facturar</span><input id="fServicio"/></div>
+        </div>
+        <div class="grid g2" style="margin-top:10px">
+          <div class="field"><span class="lb">PPTO</span><input class="num" id="fPpto"/></div>
+          <div class="field"><span class="lb">OC</span><input class="num" id="fOc"/></div>
+        </div>
       </div>
       <div class="vencrow" id="vencrow">
         <input type="checkbox" id="chkVenc" checked/>
@@ -391,35 +416,26 @@ footer.foot .links a:hover{ color:var(--gold); }
       </div>
     </div>
 
-    <div class="section">
-      <h2>Facturación</h2>
-      <div class="grid g4">
-        <div class="field"><span class="lb">Monto a facturar</span><input class="num" id="fMonto" placeholder="$"/></div>
-        <div class="field"><span class="lb">Servicio a facturar</span><input id="fServicio"/></div>
-        <div class="field"><span class="lb">PPTO</span><input class="num" id="fPpto"/></div>
-        <div class="field"><span class="lb">OC</span><input class="num" id="fOc"/></div>
+    <div class="section band">
+      <div class="band-col">
+        <h2>Equipo</h2>
+        <div class="grid g1">
+          <div class="field"><span class="lb">Marca equipo</span><input id="eMarca"/></div>
+          <div class="field"><span class="lb">Tipo refrigerante</span><input id="eRefri"/></div>
+          <div class="field"><span class="lb">Modelo</span><input id="eModelo"/></div>
+          <div class="field"><span class="lb">Nombre técnicos</span><input id="eTecnicos"/></div>
+        </div>
       </div>
-    </div>
-
-    <div class="section">
-      <h2>Equipo</h2>
-      <div class="grid g4">
-        <div class="field"><span class="lb">Marca equipo</span><input id="eMarca"/></div>
-        <div class="field"><span class="lb">Tipo refrigerante</span><input id="eRefri"/></div>
-        <div class="field"><span class="lb">Modelo</span><input id="eModelo"/></div>
-        <div class="field"><span class="lb">Nombre técnicos</span><input id="eTecnicos"/></div>
-      </div>
-    </div>
-
-    <div class="section">
-      <h2>Parámetros técnicos</h2>
-      <div class="tech-wrap">
-        <table class="tech-table"><tbody>
-          <tr><td>A. Compresor</td><td><input class="num" id="tAComp"/></td><td>Presión succión</td><td><input class="num" id="tPresSuc"/></td></tr>
-          <tr><td>A. Vent. IDM</td><td><input class="num" id="tAVentIdm"/></td><td>Presión descarga</td><td><input class="num" id="tPresDesc"/></td></tr>
-          <tr><td>A. Vent. ODM</td><td><input class="num" id="tAVentOdm"/></td><td>Voltaje / Hz</td><td><input class="num" id="tVoltaje"/></td></tr>
-          <tr><td>Carga por placa</td><td><input class="num" id="tCargaPlaca"/></td><td>Carga realizada</td><td><input class="num" id="tCargaReal"/></td></tr>
-        </tbody></table>
+      <div class="band-col">
+        <h2>Parámetros técnicos</h2>
+        <div class="tech-wrap">
+          <table class="tech-table"><tbody>
+            <tr><td>A. Compresor</td><td><input class="num" id="tAComp"/></td><td>Presión succión</td><td><input class="num" id="tPresSuc"/></td></tr>
+            <tr><td>A. Vent. IDM</td><td><input class="num" id="tAVentIdm"/></td><td>Presión descarga</td><td><input class="num" id="tPresDesc"/></td></tr>
+            <tr><td>A. Vent. ODM</td><td><input class="num" id="tAVentOdm"/></td><td>Voltaje / Hz</td><td><input class="num" id="tVoltaje"/></td></tr>
+            <tr><td>Carga por placa</td><td><input class="num" id="tCargaPlaca"/></td><td>Carga realizada</td><td><input class="num" id="tCargaReal"/></td></tr>
+          </tbody></table>
+        </div>
       </div>
     </div>
 
