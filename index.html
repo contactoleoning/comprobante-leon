@@ -281,9 +281,31 @@ footer.foot .links a:hover{ color:var(--gold); }
 
   .hora-row{ gap:14px !important; }
 }
+/* ── pantalla de acceso ── */
+#lock-overlay{position:fixed;inset:0;z-index:9999;background:radial-gradient(ellipse at 50% 30%,#1c1c20 0%,#0b0b0d 55%,#050506 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:20px}
+#lock-overlay .lock-logo{width:88px;height:88px;border-radius:20px;background:#fff;object-fit:contain;padding:8px;box-shadow:0 0 0 1px rgba(203,171,110,.35),0 0 45px rgba(203,171,110,.2),0 18px 40px rgba(0,0,0,.5)}
+#lock-overlay h2{color:var(--gold);font-size:21px;font-weight:800;letter-spacing:.08em;margin:0;text-align:center}
+#lock-overlay .lock-sub{color:var(--text3);font-size:12px;font-weight:600;letter-spacing:.2em;text-transform:uppercase;text-align:center}
+#lock-overlay input{background:var(--bg3);border:2px solid var(--brd2);border-radius:12px;color:var(--text);font-size:16px;font-weight:600;text-align:center;padding:13px 18px;width:270px;max-width:80vw;outline:none}
+#lock-overlay input::placeholder{color:var(--text3);font-weight:500}
+#lock-overlay input:focus{border-color:var(--gold);box-shadow:0 0 0 4px rgba(203,171,110,.15)}
+#lock-overlay .lock-btn{background:var(--gold);color:var(--gold-ink);border:none;border-radius:12px;font-size:16px;font-weight:800;padding:13px 40px;cursor:pointer;width:270px;max-width:80vw}
+#lock-overlay .lock-btn:hover{filter:brightness(1.08)}
+#lock-overlay .lock-btn[disabled]{opacity:.55;cursor:default;filter:none}
+#lock-overlay .lock-err{color:var(--red);font-size:13px;font-weight:600;min-height:18px;text-align:center}
 </style>
 </head>
 <body>
+
+<div id="lock-overlay">
+  <img class="lock-logo" src="icon-192.png" alt="León Ingeniería"/>
+  <h2>COMPROBANTE DE SERVICIO</h2>
+  <div class="lock-sub">León Ingeniería y Proyectos SpA</div>
+  <input type="email" id="lock-email" placeholder="Correo" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter')document.getElementById('lock-input').focus()"/>
+  <input type="password" id="lock-input" placeholder="Contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')checkPass()"/>
+  <button class="lock-btn" id="lock-btn" onclick="checkPass()">Entrar</button>
+  <div class="lock-err" id="lock-err"></div>
+</div>
 
 <div class="topbar">
   <img class="brandmark" src="logo-header.png" alt="León Ingeniería"/>
@@ -293,6 +315,7 @@ footer.foot .links a:hover{ color:var(--gold); }
   <div class="nav-links">
     <a href="https://contactoleoning.github.io/indicador-leon" target="_blank" rel="noopener">Indicador de Vencimiento</a>
     <a href="https://contactoleoning.github.io/cotizador-leon" target="_blank" rel="noopener">Cotizador</a>
+    <a href="#" onclick="cerrarSesion();return false;" title="Cerrar sesión">Salir</a>
   </div>
 </div>
 
@@ -492,6 +515,52 @@ function setSyncStatus(state, label){
   document.getElementById('sync-lbl').textContent = label;
 }
 
+// ═══════════════════════════════════════
+// SESIÓN — mismas cuentas que el cotizador y el indicador
+// ═══════════════════════════════════════
+let LEON_USUARIO = null;   // { uid, email, nombre, rol }
+
+function mostrarLock(){
+  const ov = document.getElementById('lock-overlay');
+  if(!ov) return;
+  ov.style.display = 'flex';
+  document.getElementById('lock-input').value = '';
+  const em = document.getElementById('lock-email');
+  setTimeout(()=>{ (em.value ? document.getElementById('lock-input') : em).focus(); }, 100);
+}
+
+function lockError(msg){
+  const e = document.getElementById('lock-err');
+  e.textContent = msg;
+  setTimeout(()=>{ if(e.textContent === msg) e.textContent = ''; }, 5000);
+}
+
+function checkPass(){
+  const email = (document.getElementById('lock-email').value||'').trim();
+  const pass  = document.getElementById('lock-input').value||'';
+  const btn   = document.getElementById('lock-btn');
+  if(!email){ lockError('Escribe tu correo.'); document.getElementById('lock-email').focus(); return; }
+  if(!pass){ lockError('Escribe tu contraseña.'); document.getElementById('lock-input').focus(); return; }
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  firebase.auth().signInWithEmailAndPassword(email, pass)
+    .then(()=>{ document.getElementById('lock-input').value = ''; })
+    .catch(err=>{
+      let m = 'No pudimos entrar. Revisa el correo y la contraseña.';
+      if(err && err.code === 'auth/too-many-requests') m = 'Demasiados intentos. Espera unos minutos y vuelve a probar.';
+      if(err && err.code === 'auth/network-request-failed') m = 'Sin conexión. Revisa la señal e intenta de nuevo.';
+      lockError(m);
+      document.getElementById('lock-input').value = '';
+      document.getElementById('lock-input').focus();
+    })
+    .then(()=>{ btn.disabled = false; btn.textContent = 'Entrar'; });
+}
+
+function cerrarSesion(){
+  LEON_USUARIO = null;
+  try{ if(db) db.ref('leon_clientes').off(); }catch(e){}
+  firebase.auth().signOut().catch(e=>console.error('Error al cerrar sesión:', e));
+}
+
 function initFirebase(){
   try{
     let app;
@@ -500,18 +569,28 @@ function initFirebase(){
       firebase.appCheck().activate(new firebase.appCheck.ReCaptchaV3Provider(APP_CHECK_SITE_KEY), true);
     } catch(e){ console.error('App Check no se pudo activar:', e); }
 
-    setSyncStatus('syncing', 'conectando…');
-    firebase.auth().signInAnonymously().then(function(){
-      db = firebase.database(app);
-      escucharClientes();
-      if(!MODO_PRUEBA) reservarFolio();
-      firebase.database().ref('.info/connected').on('value', snap=>{
-        if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
-      });
-    }).catch(function(err){
-      console.error('Auth anónima falló:', err);
-      setSyncStatus('err', 'sin autorización');
-      document.getElementById('picker-hint').textContent = 'No se pudo conectar al Indicador. Puedes seguir en modo manual.';
+    // Esta app entraba con signInAnonymously() y no tenía ninguna pantalla
+    // de acceso: quien tuviera la dirección veía la lista completa de
+    // clientes del Indicador. Ahora abre sesión una persona con su correo,
+    // igual que el cotizador y el indicador, y la base recién se conecta
+    // después de eso.
+    setSyncStatus('', 'sin sesión');
+    firebase.auth().onAuthStateChanged(function(user){
+      if(user && !user.isAnonymous){
+        document.getElementById('lock-overlay').style.display = 'none';
+        setSyncStatus('syncing', 'conectando…');
+        db = firebase.database(app);
+        escucharClientes();
+        if(!MODO_PRUEBA) reservarFolio();
+        firebase.database().ref('.info/connected').on('value', snap=>{
+          if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
+        });
+      } else {
+        db = null;
+        clientesIndex = {};
+        setSyncStatus('', 'sin sesión');
+        mostrarLock();
+      }
     });
   } catch(e){
     console.error('Firebase init error:', e);
