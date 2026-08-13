@@ -303,11 +303,9 @@ footer.foot .links a:hover{ color:var(--gold); }
   text-transform:uppercase;text-align:center;padding:6px 8px 8px;
   box-shadow:0 -2px 12px rgba(0,0,0,.45)}
 @media print{#beta-flag{display:none}}
-/* En pantalla angosta el texto se partia en dos lineas: se aprieta el
-   espaciado en vez de acortar el aviso. */
+/* En pantalla angosta el texto se partia en dos lineas. */
 @media (max-width:430px){#beta-flag{letter-spacing:.04em;font-size:10px;padding:5px 6px 7px}}
-/* La franja es fija sobre el contenido: sin este hueco tapaba la ultima
-   fila de la lista de clientes en el celular. */
+/* La franja es fija sobre el contenido: sin este hueco tapaba la ultima fila. */
 body{padding-bottom:30px}
 </style>
 </head>
@@ -363,7 +361,7 @@ body{padding-bottom:30px}
 
   <div class="toolbar">
     <button class="btn ghost" id="btnClear" onclick="limpiarFormulario()">Limpiar formulario</button>
-    <button class="btn" id="btnPrint" onclick="window.print()">Imprimir / Guardar PDF</button>
+    <button class="btn" id="btnPrint" onclick="imprimirComprobante()">Imprimir / Guardar PDF</button>
     <button class="btn primary" id="btnSave" onclick="guardarComprobante()">Guardar comprobante</button>
   </div>
 
@@ -597,7 +595,6 @@ function initFirebase(){
         setSyncStatus('syncing', 'conectando…');
         db = firebase.database(app);
         escucharClientes();
-        if(!MODO_PRUEBA) reservarFolio();
         firebase.database().ref('.info/connected').on('value', snap=>{
           if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
         });
@@ -728,26 +725,50 @@ function limpiarFormulario(){
 // FOLIO — contador atómico compartido (transaction evita choques
 // entre dos dispositivos reservando el mismo número a la vez).
 // ═══════════════════════════════════════
-function reservarFolio(){
+// El folio se reserva A DEMANDA, no al abrir la app.
+//
+// Antes se pedía en el arranque: abrir el comprobante para mirar algo, o
+// abrirlo por error, ya consumía un número. El correlativo quedaba con saltos
+// -- justo donde una numeración de documentos no debería tenerlos -- y no
+// había forma de saber si el 152 se había perdido o nunca existió.
+//
+// Ahora se pide en el primer momento en que el número hace falta de verdad:
+// al guardar o al imprimir. Abrir y cerrar sin hacer nada no gasta folios.
+function asegurarFolio(){
+  if(folioReservado)return Promise.resolve(folioReservado);
+
   if(MODO_PRUEBA){
     folioReservado = 'PRUEBA-' + Date.now().toString().slice(-5);
     document.getElementById('folioVal').textContent = folioReservado;
-    return;
+    return Promise.resolve(folioReservado);
   }
   if(!db){
-    // Firebase aún no termina de conectar (auth anónima es asíncrona) —
-    // se reintenta apenas quede lista, ver initFirebase().
-    document.getElementById('folioVal').textContent = 'reservando…';
-    return;
+    toast('Todavía sin conexión al Indicador — espera unos segundos e intenta de nuevo');
+    return Promise.reject(new Error('sin conexión'));
   }
-  db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||147)+1).then(res=>{
-    folioReservado = res.snapshot.val();
-    document.getElementById('folioVal').textContent = String(folioReservado).padStart(6,'0');
-  }).catch(err=>{
-    console.error('No se pudo reservar folio:', err);
-    document.getElementById('folioVal').textContent = 'sin conexión';
-    toast('No se pudo reservar el N° de comprobante — revisa tu conexión');
-  });
+
+  document.getElementById('folioVal').textContent = 'reservando…';
+  // La transacción es lo que evita que dos personas tomen el mismo número
+  // al mismo tiempo desde equipos distintos.
+  return db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||147)+1)
+    .then(res=>{
+      folioReservado = res.snapshot.val();
+      document.getElementById('folioVal').textContent = String(folioReservado).padStart(6,'0');
+      return folioReservado;
+    })
+    .catch(err=>{
+      console.error('No se pudo reservar folio:', err);
+      document.getElementById('folioVal').textContent = '— sin reservar —';
+      toast('No se pudo reservar el N° de comprobante — revisa tu conexión');
+      throw err;
+    });
+}
+
+// Imprimir necesita el número en el papel, así que también lo reserva.
+function imprimirComprobante(){
+  asegurarFolio().then(function(){
+    window.print();
+  }).catch(function(){ /* el toast ya avisó */ });
 }
 
 // ═══════════════════════════════════════
@@ -806,19 +827,27 @@ function resumenParaHistorial(c){
 }
 
 function guardarComprobante(){
-  if(!folioReservado){ reservarFolio(); }
-  const c = recolectarComprobante();
-  if(!c.cliente.nombre){
+  // El nombre se valida ANTES de pedir el folio: si falta, no tiene sentido
+  // consumir un número del correlativo.
+  if(!document.getElementById('cCliente').value.trim()){
     toast('Falta el nombre del cliente'); document.getElementById('cCliente').focus(); return;
   }
+  document.getElementById('btnSave').disabled = true;
+  asegurarFolio()
+    .then(function(){ guardarComprobanteConFolio(); })
+    .catch(function(){ document.getElementById('btnSave').disabled = false; });
+}
+
+function guardarComprobanteConFolio(){
+  const c = recolectarComprobante();
 
   if(MODO_PRUEBA){
     console.log('MODO_PRUEBA — comprobante que se habría guardado:', c);
     toast('Modo prueba: no se escribió nada en Firebase (revisa la consola)');
+    document.getElementById('btnSave').disabled = false;
     return;
   }
 
-  document.getElementById('btnSave').disabled = true;
   setSyncStatus('syncing', 'guardando…');
 
   db.ref('leon_comprobantes/' + c.folio).set(c)
@@ -874,7 +903,6 @@ function actualizarFichaCliente(key, c){
 // ARRANQUE
 // ═══════════════════════════════════════
 toggleVencRow();
-reservarFolio();
 initFirebase();
 if(MODO_PRUEBA){ setSyncStatus('syncing', 'modo prueba — sin escritura real'); }
 </script>
