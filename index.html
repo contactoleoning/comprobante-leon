@@ -482,6 +482,11 @@ footer.foot .links a:hover{ color:var(--gold); }
   <span class="txt">León Ingeniería y Proyectos SpA — comprobante digital enlazado al Indicador de Vencimiento</span>
   <span class="links">
     <a href="https://contactoleoning.github.io/indicador-leon" target="_blank" rel="noopener">Ver Indicador →</a>
+    <!-- Esta app no tiene service worker, así que GitHub Pages la cachea 10
+         minutos y no hay aviso de "nueva versión" como en el Indicador. El
+         número sirve para saber de un vistazo qué versión está cargada:
+         si no coincide con la última publicada, falta un refresco forzado. -->
+    <span style="opacity:.55;margin-left:10px">v2</span>
   </span>
 </footer>
 
