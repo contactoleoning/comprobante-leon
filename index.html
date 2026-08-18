@@ -228,14 +228,34 @@ footer.foot .links a:hover{ color:var(--gold); }
 }
 .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
 
+/* En pantallas angostas la hoja se apila en una sola columna. Todas estas
+   reglas cuelgan de body:not(.capturando-pdf) a propósito: al momento de
+   sacarle la foto para el PDF se le pone la clase .capturando-pdf al body,
+   estas reglas dejan de aplicar solas y vuelven a mandar las de escritorio
+   (las de más arriba, sin tocar). Así el comprobante guardado sale idéntico
+   venga del computador o del celular, sin tener que repetir aquí los valores
+   originales -- que se desincronizarían a la primera que alguien cambie uno. */
 @media (max-width:720px){
-  .head{ grid-template-columns:1fr; } .doctitle{ text-align:left; }
-  .datebox,.folio{ justify-content:flex-start; }
-  .g2,.g3,.g4{ grid-template-columns:1fr; }
-  .band{ grid-template-columns:1fr; }
-  .band-col + .band-col{ border-left:none; border-top:1px solid var(--paper-line); }
-  .picker-row{ flex-direction:column; align-items:stretch; }
+  body:not(.capturando-pdf) .head{ grid-template-columns:1fr; }
+  body:not(.capturando-pdf) .doctitle{ text-align:left; }
+  body:not(.capturando-pdf) .datebox,
+  body:not(.capturando-pdf) .folio{ justify-content:flex-start; }
+  body:not(.capturando-pdf) .g2,
+  body:not(.capturando-pdf) .g3,
+  body:not(.capturando-pdf) .g4{ grid-template-columns:1fr; }
+  body:not(.capturando-pdf) .band{ grid-template-columns:1fr; }
+  body:not(.capturando-pdf) .band-col + .band-col{ border-left:none; border-top:1px solid var(--paper-line); }
+  body:not(.capturando-pdf) .picker-row{ flex-direction:column; align-items:stretch; }
 }
+
+/* Mientras se saca la foto, la hoja se fija al ancho de escritorio de verdad:
+   el navegador la maqueta así en serio, no es una simulación, y por eso lo
+   que se mide y lo que se dibuja no pueden discrepar. Se queda en el flujo
+   normal a propósito (nada de sacarla fuera de pantalla con posiciones
+   negativas): en el celular se va a ver un parpadeo de un instante, y ese
+   parpadeo es preferible a una coordenada rara que no puedo probar. */
+body.capturando-pdf .wrap{ max-width:none !important; }
+body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
 
 /* ── IMPRESIÓN — todo el documento comprimido para entrar en una sola hoja carta ── */
 @page{ size:letter; margin:8mm 10mm; }
@@ -486,7 +506,7 @@ footer.foot .links a:hover{ color:var(--gold); }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v7</span>
+    <span style="opacity:.55;margin-left:10px">v8</span>
   </span>
 </footer>
 
@@ -888,13 +908,21 @@ async function generarYSubirPdf(c){
     }
     const nodo = document.getElementById('sheet');
     // El comprobante tiene que quedar igual se guarde desde el computador o
-    // desde el celular -- sin esto, en el celular el CSS apila los campos en
-    // una sola columna (@media max-width:720px) y la hoja capturada sale
-    // distinta y mucho más alta. windowWidth obliga a html2canvas a armar su
-    // clon como si la pantalla fuera de escritorio (1000px, por sobre ese
-    // punto de quiebre de 720px), así el diseño de dos columnas se usa
-    // siempre, venga de donde venga el guardado. No se fija width/height:
-    // que html2canvas mida la hoja tal como queda dentro de ese ancho fijo.
+    // desde el celular. El intento anterior fue pedirle a html2canvas que
+    // "imaginara" una pantalla de 1000px (windowWidth) -- y eso fue justo lo
+    // que rompió el PDF en el teléfono: el recuadro de recorte se mide sobre
+    // la hoja REAL (en el celular, angosta y muy alta, apilada en una
+    // columna), pero el dibujo se hace sobre la versión re-maquetada a
+    // 1000px, donde la hoja es ancha y baja. Ese recuadro viejo cae en el
+    // lugar equivocado: sale una tira angosta con el resto en blanco. En el
+    // escritorio nunca se nota, porque ahí las dos maquetaciones coinciden.
+    //
+    // Ahora no se imagina nada: se le pone .capturando-pdf al body, el
+    // navegador maqueta la hoja de verdad al ancho de escritorio, y recién
+    // ahí se saca la foto. Lo que se mide y lo que se dibuja son lo mismo.
+    // El scroll también se manda a cero: html2canvas toma la posición de
+    // scroll para calcular coordenadas, y al guardar desde el celular la
+    // página suele estar corrida hacia abajo.
     //
     // html2canvas trae además su propio parser de CSS (viejo y frágil) para
     // poder incrustar las fuentes de Google Fonts en la imagen. Si la
@@ -907,16 +935,38 @@ async function generarYSubirPdf(c){
     // Por eso el método clásico va primero (es el que se ve bien) y
     // foreignObjectRendering queda solo como último recurso si el clásico
     // revienta con el "unexpected eof".
-    const opts = {
-      scale: 2, backgroundColor: '#ffffff', useCORS: true,
-      windowWidth: 1000, windowHeight: 4000
-    };
+    const opts = { scale: 2, backgroundColor: '#ffffff', useCORS: true, scrollX: 0, scrollY: 0 };
+    const scrollPrevio = window.pageYOffset || document.documentElement.scrollTop || 0;
     let canvas;
     try {
-      canvas = await html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false }));
-    } catch (e1) {
-      console.error('método clásico falló, reintentando con foreignObjectRendering:', e1);
-      canvas = await html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: true }));
+      document.body.classList.add('capturando-pdf');
+      window.scrollTo(0, 0);
+      // Leer una medida obliga al navegador a re-maquetar en el acto, así la
+      // hoja ya está al ancho nuevo cuando html2canvas la mida. A propósito
+      // NO se usa requestAnimationFrame: no se dispara si la pestaña queda en
+      // segundo plano (pantalla bloqueada, cambio de app), y ahí el guardado
+      // se colgaba para siempre dejando la hoja deformada en pantalla. Se
+      // probó y pasa. setTimeout sí se dispara igual.
+      void nodo.offsetWidth;
+      await new Promise(function(r){ setTimeout(r, 50); });
+      // Red de seguridad: si html2canvas se queda pegado, el finally de abajo
+      // nunca correría y el usuario se queda con el comprobante deformado.
+      const conTope = function(p){
+        return Promise.race([p, new Promise(function(_, rej){
+          setTimeout(function(){ rej(new Error('la generación del PDF se demoró demasiado')); }, 30000);
+        })]);
+      };
+      try {
+        canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false })));
+      } catch (e1) {
+        console.error('método clásico falló, reintentando con foreignObjectRendering:', e1);
+        canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: true })));
+      }
+    } finally {
+      // Pase lo que pase, la hoja vuelve a como estaba: si esto quedara
+      // puesto, el usuario se queda con el comprobante deformado en pantalla.
+      document.body.classList.remove('capturando-pdf');
+      window.scrollTo(0, scrollPrevio);
     }
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
