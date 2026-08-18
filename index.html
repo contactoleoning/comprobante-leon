@@ -486,7 +486,7 @@ footer.foot .links a:hover{ color:var(--gold); }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v5</span>
+    <span style="opacity:.55;margin-left:10px">v6</span>
   </span>
 </footer>
 
@@ -898,20 +898,52 @@ async function generarYSubirPdf(c){
     // Por eso el método clásico va primero (es el que se ve bien) y
     // foreignObjectRendering queda solo como último recurso si el clásico
     // revienta con el "unexpected eof".
+    //
+    // Además, sin indicar windowWidth/windowHeight, html2canvas arma su
+    // clon interno con el ancho de la ventana visible del que está usando
+    // la app. En el celular esa ventana es angosta y la hoja (#sheet) es
+    // más ancha -- resultado: capta solo la franja que entra en la pantalla
+    // y el resto queda en blanco. Hay que pasarle el tamaño real de la hoja.
+    const opts = {
+      scale: 2, backgroundColor: '#ffffff', useCORS: true,
+      width: nodo.scrollWidth, height: nodo.scrollHeight,
+      windowWidth: nodo.scrollWidth, windowHeight: nodo.scrollHeight
+    };
     let canvas;
     try {
-      canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true, foreignObjectRendering: false });
+      canvas = await html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false }));
     } catch (e1) {
       console.error('método clásico falló, reintentando con foreignObjectRendering:', e1);
-      canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true, foreignObjectRendering: true });
+      canvas = await html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: true }));
     }
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
-    const w = canvas.width * ratio, h = canvas.height * ratio;
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageW - w) / 2, 0, w, h);
+    // La hoja completa casi nunca cabe en una sola página carta -- sobre
+    // todo en el celular, donde los campos se apilan en una sola columna y
+    // la hoja queda mucho más alta. Forzar todo a una página encogía el
+    // ancho para que la altura entera cupiera, y el resultado era una
+    // franja angosta con el resto de la página en blanco. La solución es
+    // repartir la hoja en varias páginas carta, cada una a ancho completo,
+    // igual que haría el navegador al imprimir un documento largo.
+    const escala = pageW / canvas.width;
+    const altoPaginaPx = pageH / escala;
+    let y = 0, primera = true;
+    while (y < canvas.height) {
+      const altoTramoPx = Math.min(altoPaginaPx, canvas.height - y);
+      const tramo = document.createElement('canvas');
+      tramo.width = canvas.width;
+      tramo.height = altoTramoPx;
+      const ctx = tramo.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, tramo.width, tramo.height);
+      ctx.drawImage(canvas, 0, y, canvas.width, altoTramoPx, 0, 0, canvas.width, altoTramoPx);
+      if (!primera) pdf.addPage();
+      primera = false;
+      pdf.addImage(tramo.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, altoTramoPx * escala);
+      y += altoTramoPx;
+    }
     const blob = pdf.output('blob');
 
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
