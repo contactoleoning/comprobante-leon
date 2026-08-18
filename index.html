@@ -182,10 +182,22 @@ body{line-height:1.5}
   border:1.5px solid var(--paper-line2); border-radius:3px; background:var(--paper);
   -webkit-print-color-adjust:exact; print-color-adjust:exact;
 }
-.sheet input[type="checkbox"]:checked{ background:var(--paper-ink); border-color:var(--paper-ink); }
-.sheet input[type="checkbox"]:checked::after{
-  content:""; position:absolute; left:4px; top:1px; width:4px; height:8px;
-  border:solid var(--paper); border-width:0 2px 2px 0; transform:rotate(45deg);
+/* El visto va como imagen de fondo, NO como pseudo-elemento ::after.
+   Antes era un ::after con bordes en L (border-width:0 2px 2px 0) y
+   transform:rotate(45deg). Se veia bien en pantalla, pero reventaba la
+   generacion del PDF: html2canvas se atora al procesar un ::after sobre un
+   <input> y tira "Error parsing CSS component value, unexpected EOF". Como
+   ese checkbox marcado solo aparece cuando se marca "Mantencion" (que
+   muestra #vencrow), el PDF fallaba justo en los comprobantes de mantencion
+   y salia bien en todos los demas -- por eso costo tanto encontrarlo.
+   Comprobado el 2026-08-18 aislandolo: con el ::after falla siempre, sin el
+   ::after funciona siempre, y da igual el borde que se le ponga.
+   Ojo: html2canvas dibuja los checkbox a su manera e ignora este estilo, asi
+   que esto es para la pantalla; en el PDF el visto lo pinta el. */
+.sheet input[type="checkbox"]:checked{
+  background-color:var(--paper-ink); border-color:var(--paper-ink);
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2.5 6.3 L5 8.8 L9.5 3.4' fill='none' stroke='%23fffdf7' stroke-width='2.1' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat:no-repeat; background-position:center; background-size:11px 11px;
 }
 .sheet input[type="checkbox"]:focus-visible{ outline:2px solid var(--gold); outline-offset:2px; }
 
@@ -294,7 +306,8 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
   .motivos{ gap:1px 12px !important; }
   .chk{ padding:0 2px !important; font-size:11px !important; gap:6px !important; }
   .sheet input[type="checkbox"]{ width:11px !important; height:11px !important; }
-  .sheet input[type="checkbox"]:checked::after{ left:2.5px !important; top:0 !important; width:3px !important; height:6px !important; }
+  /* El visto es imagen de fondo, no ::after -- ver el comentario de arriba. */
+  .sheet input[type="checkbox"]:checked{ background-size:8px 8px !important; }
   .vencrow{ padding:4px 9px !important; font-size:10.5px !important; gap:6px !important; }
   .band .vencrow{ margin:0 16px 6px !important; }
 
@@ -506,7 +519,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v8</span>
+    <span style="opacity:.55;margin-left:10px">v9</span>
   </span>
 </footer>
 
@@ -924,17 +937,13 @@ async function generarYSubirPdf(c){
     // scroll para calcular coordenadas, y al guardar desde el celular la
     // página suele estar corrida hacia abajo.
     //
-    // html2canvas trae además su propio parser de CSS (viejo y frágil) para
-    // poder incrustar las fuentes de Google Fonts en la imagen. Si la
-    // descarga de esa hoja de estilos se corta a medias -- por la red del
-    // que está usando la app, no algo que dependa de nosotros -- ese parser
-    // tira "unexpected eof" y el PDF nunca se genera. foreignObjectRendering
-    // evita ese camino entero (delega el dibujo al motor nativo del
-    // navegador), pero en formularios con inputs/textarea puede recortar
-    // texto por el lado izquierdo -- se probó y el resultado queda dañado.
-    // Por eso el método clásico va primero (es el que se ve bien) y
-    // foreignObjectRendering queda solo como último recurso si el clásico
-    // revienta con el "unexpected eof".
+    // NO hay respaldo con foreignObjectRendering, y es a propósito. Antes,
+    // cuando el método clásico reventaba con "unexpected eof", se reintentaba
+    // con foreignObjectRendering; ese modo no falla, pero devuelve la hoja
+    // recortada por la izquierda y empezando por la mitad. O sea: el respaldo
+    // adjuntaba en silencio un comprobante ilegible, que es peor que no
+    // adjuntar nada. La causa de aquel "unexpected eof" ya está arreglada (el
+    // ::after del checkbox, ver el CSS). Si aun así falla, que se sepa.
     const opts = { scale: 2, backgroundColor: '#ffffff', useCORS: true, scrollX: 0, scrollY: 0 };
     const scrollPrevio = window.pageYOffset || document.documentElement.scrollTop || 0;
     let canvas;
@@ -956,12 +965,7 @@ async function generarYSubirPdf(c){
           setTimeout(function(){ rej(new Error('la generación del PDF se demoró demasiado')); }, 30000);
         })]);
       };
-      try {
-        canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false })));
-      } catch (e1) {
-        console.error('método clásico falló, reintentando con foreignObjectRendering:', e1);
-        canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: true })));
-      }
+      canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false })));
     } finally {
       // Pase lo que pase, la hoja vuelve a como estaba: si esto quedara
       // puesto, el usuario se queda con el comprobante deformado en pantalla.
