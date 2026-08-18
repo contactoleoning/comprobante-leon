@@ -17,6 +17,12 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+<!-- Para adjuntar el comprobante como PDF real en la ficha del cliente del
+     Indicador: html2canvas capta el #sheet tal como se ve, jsPDF lo envuelve
+     en un PDF de una página carta -- el mismo tamaño que ya usa @media print. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{font-size:16px}
@@ -505,6 +511,7 @@ const APP_CHECK_SITE_KEY = "6LcU5U4tAAAAAJG4eNx-5jw37hdqwwAWrRvpv6YY";
 const MODO_PRUEBA = false;
 
 let db = null;
+let fbStorage = null; // Storage del mismo proyecto -- ahí quedan los PDF adjuntos
 let clientesIndex = {};   // { "c123...": {id, cliente, direccion, ...} }
 let clienteActivo = null; // key seleccionada
 let modoCliente = 'existente';
@@ -580,12 +587,14 @@ function initFirebase(){
         document.getElementById('lock-overlay').style.display = 'none';
         setSyncStatus('syncing', 'conectando…');
         db = firebase.database(app);
+        fbStorage = firebase.storage(app);
         escucharClientes();
         firebase.database().ref('.info/connected').on('value', snap=>{
           if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
         });
       } else {
         db = null;
+        fbStorage = null;
         clientesIndex = {};
         setSyncStatus('', 'sin sesión');
         mostrarLock();
@@ -855,13 +864,46 @@ function guardarComprobanteConFolio(){
     });
 }
 
-// Lee la ficha completa del cliente, agrega la entrada al historial y —si
-// corresponde— reinicia el ciclo de vencimiento, igual que hace el botón
-// "Registrar mantención" del Indicador. Se hace con la ficha completa
-// (no solo el campo historial) para no pisar datos si alguien la editó
-// desde el Indicador justo en ese momento.
+// Capta el comprobante impreso (#sheet, el mismo nodo que usa @media print)
+// como imagen y lo envuelve en un PDF de una página carta -- así el archivo
+// que queda adjunto en la ficha del cliente es igual al que saldría de
+// "Imprimir / Guardar PDF" a mano. Si algo falla (sin conexión, librería que
+// no cargó) devuelve null en vez de reventar: el comprobante y el historial
+// ya se guardaron, adjuntar el PDF es un plus, no puede tumbar el guardado.
+async function generarYSubirPdf(c){
+  try{
+    if(!fbStorage || typeof html2canvas !== 'function' || !window.jspdf) return null;
+    const nodo = document.getElementById('sheet');
+    const canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+    const w = canvas.width * ratio, h = canvas.height * ratio;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageW - w) / 2, 0, w, h);
+    const blob = pdf.output('blob');
+
+    const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const nombre = 'Comprobante_' + c.folio + '.pdf';
+    const ref = fbStorage.ref('documentos/' + id + '.pdf');
+    await ref.put(blob, { contentType: 'application/pdf' });
+    const url = await ref.getDownloadURL();
+    return { id, url, nombre, fecha: c.fecha };
+  } catch(e){
+    console.error('No se pudo generar/subir el PDF del comprobante:', e);
+    return null;
+  }
+}
+
+// Lee la ficha completa del cliente, agrega la entrada al historial, adjunta
+// el PDF del comprobante y —si corresponde— reinicia el ciclo de
+// vencimiento, igual que hace el botón "Registrar mantención" del
+// Indicador. Se hace con la ficha completa (no solo los campos que cambian)
+// para no pisar datos si alguien la editó desde el Indicador justo en ese
+// momento.
 function actualizarFichaCliente(key, c){
-  return db.ref('leon_clientes/' + key).once('value').then(snap=>{
+  return db.ref('leon_clientes/' + key).once('value').then(async snap=>{
     const row = snap.val();
     if(!row) return;
     if(!row.historial) row.historial = [];
@@ -873,6 +915,11 @@ function actualizarFichaCliente(key, c){
       inicioPrevio: row.inicia || null,
       comprobanteFolio: c.folio,
     });
+    const doc = await generarYSubirPdf(c);
+    if(doc){
+      if(!row.documentos) row.documentos = [];
+      row.documentos.push(doc);
+    }
     const actualizarVenc = document.getElementById('chkVenc').checked && document.getElementById('vencrow').style.display !== 'none';
     if(actualizarVenc){
       row.inicia = c.fecha;
