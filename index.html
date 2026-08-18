@@ -486,7 +486,7 @@ footer.foot .links a:hover{ color:var(--gold); }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v3</span>
+    <span style="opacity:.55;margin-left:10px">v4</span>
   </span>
 </footer>
 
@@ -887,7 +887,22 @@ async function generarYSubirPdf(c){
       return null;
     }
     const nodo = document.getElementById('sheet');
-    const canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    // html2canvas trae su propio parser de CSS (viejo y frágil) para poder
+    // incrustar las fuentes de Google Fonts en la imagen. Si la descarga de
+    // esa hoja de estilos se corta a medias -- por la red del que está
+    // usando la app, no algo que dependa de nosotros -- ese parser tira
+    // "unexpected eof" y el PDF nunca se genera. foreignObjectRendering
+    // evita ese camino entero: delega el dibujo al motor nativo del
+    // navegador en vez de reimplementar CSS a mano. Si aun así falla (no
+    // todos los navegadores lo soportan igual de bien), se reintenta con el
+    // método de siempre antes de rendirse.
+    let canvas;
+    try {
+      canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true, foreignObjectRendering: true });
+    } catch (e1) {
+      console.error('foreignObjectRendering falló, reintentando con el método clásico:', e1);
+      canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true, foreignObjectRendering: false });
+    }
     const { jsPDF } = window.jspdf;
     const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
     const pageW = pdf.internal.pageSize.getWidth();
