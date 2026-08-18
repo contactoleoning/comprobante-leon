@@ -486,7 +486,7 @@ footer.foot .links a:hover{ color:var(--gold); }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v6</span>
+    <span style="opacity:.55;margin-left:10px">v7</span>
   </span>
 </footer>
 
@@ -887,27 +887,29 @@ async function generarYSubirPdf(c){
       return null;
     }
     const nodo = document.getElementById('sheet');
-    // html2canvas trae su propio parser de CSS (viejo y frágil) para poder
-    // incrustar las fuentes de Google Fonts en la imagen. Si la descarga de
-    // esa hoja de estilos se corta a medias -- por la red del que está
-    // usando la app, no algo que dependa de nosotros -- ese parser tira
-    // "unexpected eof" y el PDF nunca se genera. foreignObjectRendering
+    // El comprobante tiene que quedar igual se guarde desde el computador o
+    // desde el celular -- sin esto, en el celular el CSS apila los campos en
+    // una sola columna (@media max-width:720px) y la hoja capturada sale
+    // distinta y mucho más alta. windowWidth obliga a html2canvas a armar su
+    // clon como si la pantalla fuera de escritorio (1000px, por sobre ese
+    // punto de quiebre de 720px), así el diseño de dos columnas se usa
+    // siempre, venga de donde venga el guardado. No se fija width/height:
+    // que html2canvas mida la hoja tal como queda dentro de ese ancho fijo.
+    //
+    // html2canvas trae además su propio parser de CSS (viejo y frágil) para
+    // poder incrustar las fuentes de Google Fonts en la imagen. Si la
+    // descarga de esa hoja de estilos se corta a medias -- por la red del
+    // que está usando la app, no algo que dependa de nosotros -- ese parser
+    // tira "unexpected eof" y el PDF nunca se genera. foreignObjectRendering
     // evita ese camino entero (delega el dibujo al motor nativo del
     // navegador), pero en formularios con inputs/textarea puede recortar
     // texto por el lado izquierdo -- se probó y el resultado queda dañado.
     // Por eso el método clásico va primero (es el que se ve bien) y
     // foreignObjectRendering queda solo como último recurso si el clásico
     // revienta con el "unexpected eof".
-    //
-    // Además, sin indicar windowWidth/windowHeight, html2canvas arma su
-    // clon interno con el ancho de la ventana visible del que está usando
-    // la app. En el celular esa ventana es angosta y la hoja (#sheet) es
-    // más ancha -- resultado: capta solo la franja que entra en la pantalla
-    // y el resto queda en blanco. Hay que pasarle el tamaño real de la hoja.
     const opts = {
       scale: 2, backgroundColor: '#ffffff', useCORS: true,
-      width: nodo.scrollWidth, height: nodo.scrollHeight,
-      windowWidth: nodo.scrollWidth, windowHeight: nodo.scrollHeight
+      windowWidth: 1000, windowHeight: 4000
     };
     let canvas;
     try {
@@ -920,30 +922,11 @@ async function generarYSubirPdf(c){
     const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    // La hoja completa casi nunca cabe en una sola página carta -- sobre
-    // todo en el celular, donde los campos se apilan en una sola columna y
-    // la hoja queda mucho más alta. Forzar todo a una página encogía el
-    // ancho para que la altura entera cupiera, y el resultado era una
-    // franja angosta con el resto de la página en blanco. La solución es
-    // repartir la hoja en varias páginas carta, cada una a ancho completo,
-    // igual que haría el navegador al imprimir un documento largo.
-    const escala = pageW / canvas.width;
-    const altoPaginaPx = pageH / escala;
-    let y = 0, primera = true;
-    while (y < canvas.height) {
-      const altoTramoPx = Math.min(altoPaginaPx, canvas.height - y);
-      const tramo = document.createElement('canvas');
-      tramo.width = canvas.width;
-      tramo.height = altoTramoPx;
-      const ctx = tramo.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, tramo.width, tramo.height);
-      ctx.drawImage(canvas, 0, y, canvas.width, altoTramoPx, 0, 0, canvas.width, altoTramoPx);
-      if (!primera) pdf.addPage();
-      primera = false;
-      pdf.addImage(tramo.toDataURL('image/jpeg', 0.92), 'JPEG', 0, 0, pageW, altoTramoPx * escala);
-      y += altoTramoPx;
-    }
+    // Todo en una sola página: se ajusta el tamaño de la imagen para que
+    // quepa completa (ancho o alto, lo que mande) y se centra en la hoja.
+    const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+    const w = canvas.width * ratio, h = canvas.height * ratio;
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
     const blob = pdf.output('blob');
 
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
