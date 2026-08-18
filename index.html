@@ -486,7 +486,7 @@ footer.foot .links a:hover{ color:var(--gold); }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v2</span>
+    <span style="opacity:.55;margin-left:10px">v3</span>
   </span>
 </footer>
 
@@ -628,6 +628,11 @@ function renderSelectCliente(){
   const entries = Object.entries(clientesIndex).sort((a,b)=> (a[1].cliente||'').localeCompare(b[1].cliente||'','es'));
   sel.innerHTML = '<option value="">— Escribe para buscar / selecciona —</option>' +
     entries.map(([key,r])=> `<option value="${escAttr(key)}">${escHtml(r.cliente||'Sin nombre')}${r.comuna?(' — '+escHtml(r.comuna)):''}</option>`).join('');
+  // Esta función corre cada vez que llegan datos del Indicador, y al
+  // reconstruir las opciones el <select> volvía a mostrar el placeholder
+  // aunque el cliente siguiera vinculado por dentro. Parecía que se había
+  // perdido la selección justo al guardar (que es cuando más se dispara).
+  if(clienteActivo) sel.value = clienteActivo;
   document.getElementById('picker-hint').innerHTML =
     entries.length
       ? `${entries.length} cliente(s) cargados desde el Indicador. Selecciona uno para autocompletar sus datos.`
@@ -848,6 +853,10 @@ function guardarComprobanteConFolio(){
       if(clienteActivo){
         return actualizarFichaCliente(clienteActivo, c);
       }
+      // Sin cliente vinculado no hay ficha donde adjuntar. Pasaba callado y
+      // parecía que el adjunto había fallado, cuando en realidad el
+      // comprobante nunca quedó asociado a nadie.
+      toast('Comprobante guardado, pero no quedó adjunto: no hay cliente del Indicador seleccionado');
     })
     .then(()=>{
       setSyncStatus('ok', 'conectado');
@@ -870,7 +879,13 @@ function guardarComprobanteConFolio(){
 // ya se guardaron, adjuntar el PDF es un plus, no puede tumbar el guardado.
 async function generarYSubirPdf(c){
   try{
-    if(!fbStorage || typeof html2canvas !== 'function' || !window.jspdf) return null;
+    // Antes esto devolvía null en silencio y no había forma de saber por qué
+    // el comprobante no llegaba a la ficha. Cada causa avisa distinto.
+    if(!fbStorage){ toast('El PDF no se adjuntó: no hay conexión con el almacenamiento'); return null; }
+    if(typeof html2canvas !== 'function' || !window.jspdf){
+      toast('El PDF no se adjuntó: no cargó el generador de PDF (revisa tu conexión)');
+      return null;
+    }
     const nodo = document.getElementById('sheet');
     const canvas = await html2canvas(nodo, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
     const { jsPDF } = window.jspdf;
@@ -890,6 +905,10 @@ async function generarYSubirPdf(c){
     return { id, url, nombre, fecha: c.fecha };
   } catch(e){
     console.error('No se pudo generar/subir el PDF del comprobante:', e);
+    // El mensaje crudo importa: si es un permission-denied de Storage, la
+    // causa son las reglas, no la conexión, y eso hay que poder distinguirlo
+    // sin abrir la consola del navegador.
+    toast('El PDF no se adjuntó — ' + (e && (e.code || e.message) ? (e.code || e.message) : 'error desconocido'));
     return null;
   }
 }
