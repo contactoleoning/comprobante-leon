@@ -429,7 +429,7 @@ footer.foot .links a:hover{ color:var(--gold); }
       </div>
       <div class="vencrow" id="vencrow">
         <input type="checkbox" id="chkVenc" checked/>
-        <span>Al guardar, <b>actualizar la fecha de próximo vencimiento</b> del cliente en el Indicador (mismo efecto que "Registrar mantención").</span>
+        <span>Al guardar, <b>actualizar la fecha de próximo vencimiento</b> del cliente en el Indicador. El comprobante queda adjunto en su ficha; el historial de mantenciones no se toca.</span>
       </div>
     </div>
 
@@ -814,13 +814,6 @@ function recolectarComprobante(){
   };
 }
 
-function resumenParaHistorial(c){
-  const motivos = c.motivos.join(', ') || 'Servicio';
-  const linea1 = `Comprobante N° ${c.folio} — ${motivos}.`;
-  const linea2 = c.trabajo ? ('\n' + c.trabajo) : '';
-  return linea1 + linea2;
-}
-
 function guardarComprobante(){
   // El nombre se valida ANTES de pedir el folio: si falta, no tiene sentido
   // consumir un número del correlativo.
@@ -896,25 +889,20 @@ async function generarYSubirPdf(c){
   }
 }
 
-// Lee la ficha completa del cliente, agrega la entrada al historial, adjunta
-// el PDF del comprobante y —si corresponde— reinicia el ciclo de
-// vencimiento, igual que hace el botón "Registrar mantención" del
-// Indicador. Se hace con la ficha completa (no solo los campos que cambian)
-// para no pisar datos si alguien la editó desde el Indicador justo en ese
-// momento.
+// Lee la ficha completa del cliente, adjunta el PDF del comprobante y —si
+// corresponde— reinicia el ciclo de vencimiento. Se hace con la ficha
+// completa (no solo los campos que cambian) para no pisar datos si alguien
+// la editó desde el Indicador justo en ese momento.
+//
+// NO escribe en `historial`: ese campo es solo del botón "Registrar
+// mantención" del Indicador. Un comprobante emitido no es una mantención
+// registrada -- puede ser una reparación, una inspección o una visita de
+// garantía -- y mezclarlos ensuciaba el historial con entradas que Isaac no
+// había ingresado. El comprobante deja su rastro en `documentos`.
 function actualizarFichaCliente(key, c){
   return db.ref('leon_clientes/' + key).once('value').then(async snap=>{
     const row = snap.val();
     if(!row) return;
-    if(!row.historial) row.historial = [];
-    row.historial.push({
-      fecha: c.fecha,
-      hora: c.horaIngreso || '',
-      detalle: resumenParaHistorial(c),
-      fotos: [],
-      inicioPrevio: row.inicia || null,
-      comprobanteFolio: c.folio,
-    });
     const doc = await generarYSubirPdf(c);
     if(doc){
       if(!row.documentos) row.documentos = [];
