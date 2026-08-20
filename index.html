@@ -519,7 +519,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v11</span>
+    <span style="opacity:.55;margin-left:10px">v12</span>
   </span>
 </footer>
 
@@ -743,12 +743,57 @@ function hoyISOChile(){
   return d.getFullYear()+'-'+mes+'-'+dia;
 }
 let fechaISOActual = hoyISOChile();
+// ¿Isaac escribió la fecha a mano? Si no la tocó, la app la recalcula sola.
+let fechaTocadaAMano = false;
+
+// Marca las cajas en rojo cuando la fecha escrita no es válida.
+function pintarFecha(ok){
+  ['fDia','fMes','fAno'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.outline = ok ? '' : '2px solid var(--red)';
+  });
+}
+
+// Devuelve la fecha ISO si las tres cajas forman una fecha válida, o null.
+// OJO con el guardia viejo: hacía value.padStart(2,'0') ANTES de comprobar, y
+// con la caja vacía eso da la cadena '00', que es truthy. Entonces una caja en
+// blanco pasaba el filtro y fechaISOActual quedaba en '2026-00-19'. Esa basura
+// viajaba a c.fecha y de ahí a row.inicia, y el Indicador calculaba el próximo
+// vencimiento sobre una fecha inexistente: el cliente aparecía vencido hace
+// meses o desaparecía del radar, sin que nada fallara a la vista.
+function fechaDeLasCajas(){
+  var d=(document.getElementById('fDia').value||'').trim();
+  var m=(document.getElementById('fMes').value||'').trim();
+  var a=(document.getElementById('fAno').value||'').trim();
+  if(!/^\d{1,2}$/.test(d) || !/^\d{1,2}$/.test(m) || !/^\d{2}$/.test(a)) return null;
+  var dn=Number(d), mn=Number(m);
+  if(dn<1 || dn>31 || mn<1 || mn>12) return null;
+  var iso = '20'+a+'-'+String(mn).padStart(2,'0')+'-'+String(dn).padStart(2,'0');
+  // Ultimo filtro: que el dia exista en ese mes (31 de febrero no).
+  var prueba = new Date(iso+'T00:00:00');
+  if(isNaN(prueba.getTime()) || prueba.getDate()!==dn) return null;
+  return iso;
+}
+
 ['fDia','fMes','fAno'].forEach(id=>document.getElementById(id).addEventListener('input', ()=>{
-  const dd=document.getElementById('fDia').value.padStart(2,'0');
-  const mm=document.getElementById('fMes').value.padStart(2,'0');
-  const yy=document.getElementById('fAno').value;
-  if(dd&&mm&&yy) fechaISOActual = '20'+yy+'-'+mm+'-'+dd;
+  fechaTocadaAMano = true;
+  var iso = fechaDeLasCajas();
+  pintarFecha(!!iso);
+  if(iso) fechaISOActual = iso;   // si no es válida, NO se toca: se avisa en rojo
 }));
+
+// La fecha se calculaba una sola vez, al evaluar el script, y nada la volvía a
+// mirar. Con la app instalada como PWA en el celular basta dejarla abierta de
+// un día para otro -- se restaura, no se recarga-- para que el comprobante
+// salga con la fecha de ayer. Y esa fecha no es solo lo impreso: va a
+// row.inicia, o sea corre el ciclo de mantención completo de ese cliente.
+function refrescarFechaSiCorresponde(){
+  if(fechaTocadaAMano) return;   // si la escribió a mano, manda lo que escribió
+  fechaISOActual = hoyISOChile();
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible') refrescarFechaSiCorresponde();
+});
 
 function limpiarFormulario(){
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
@@ -760,6 +805,10 @@ function limpiarFormulario(){
   // Limpiar el formulario es empezar un comprobante nuevo: el numero tambien
   // se suelta, si no el siguiente pisaba al anterior.
   liberarFolio();
+  // Comprobante nuevo: la fecha vuelve a ser la de hoy, salvo que se escriba.
+  fechaTocadaAMano = false;
+  fechaISOActual = hoyISOChile();
+  pintarFecha(true);
 }
 
 // ═══════════════════════════════════════
@@ -791,7 +840,19 @@ function asegurarFolio(){
   document.getElementById('folioVal').textContent = 'reservando…';
   // La transacción es lo que evita que dos personas tomen el mismo número
   // al mismo tiempo desde equipos distintos.
-  return db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||147)+1)
+  // Tope de 20 s. Una transaccion de la base solo resuelve cuando el servidor
+  // la confirma: sin señal queda pendiente para siempre, no resuelve ni
+  // rechaza. Y como guardarComprobante apaga btnSave antes de llamar aca, ni el
+  // .then ni el .catch corrian: el boton quedaba muerto, el folio decia
+  // "reservando..." y no aparecia ningun mensaje. La unica salida era recargar
+  // y perder todo lo escrito -- en una sala de maquinas o un subterraneo, que
+  // es justo donde pasa.
+  const conTopeFolio = function(promesa){
+    return Promise.race([promesa, new Promise(function(_, rechazar){
+      setTimeout(function(){ rechazar(new Error('sin señal')); }, 20000);
+    })]);
+  };
+  return conTopeFolio(db.ref('leon_comprobantes_meta/nextFolio').transaction(cur => (cur||147)+1))
     .then(res=>{
       folioReservado = res.snapshot.val();
       document.getElementById('folioVal').textContent = String(folioReservado).padStart(6,'0');
@@ -800,7 +861,9 @@ function asegurarFolio(){
     .catch(err=>{
       console.error('No se pudo reservar folio:', err);
       document.getElementById('folioVal').textContent = '— sin reservar —';
-      toast('No se pudo reservar el N° de comprobante — revisa tu conexión');
+      toast(err && err.message === 'sin señal'
+        ? 'Sin señal: no se pudo reservar el N°. No se guardó nada — lo escrito sigue acá, reintenta cuando tengas señal.'
+        : 'No se pudo reservar el N° de comprobante — revisa tu conexión');
       throw err;
     });
 }
@@ -817,6 +880,9 @@ function liberarFolio(){
 
 // Imprimir necesita el número en el papel, así que también lo reserva.
 function imprimirComprobante(){
+  // Lo impreso tambien tiene que llevar la fecha de hoy, no la de cuando se
+  // abrio la app.
+  refrescarFechaSiCorresponde();
   asegurarFolio().then(function(){
     window.print();
   }).catch(function(){ /* el toast ya avisó */ });
@@ -875,6 +941,15 @@ function guardarComprobante(){
   // consumir un número del correlativo.
   if(!document.getElementById('cCliente').value.trim()){
     toast('Falta el nombre del cliente'); document.getElementById('cCliente').focus(); return;
+  }
+  // Si la fecha quedo invalida, no se guarda ni se gasta un folio: row.inicia
+  // manda el ciclo de mantencion completo y no puede recibir basura.
+  refrescarFechaSiCorresponde();
+  if(fechaTocadaAMano && !fechaDeLasCajas()){
+    pintarFecha(false);
+    toast('Revisa la fecha del comprobante: falta un dato o no es válida');
+    document.getElementById('fDia').focus();
+    return;
   }
   document.getElementById('btnSave').disabled = true;
   asegurarFolio()
