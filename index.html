@@ -519,7 +519,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v10</span>
+    <span style="opacity:.55;margin-left:10px">v11</span>
   </span>
 </footer>
 
@@ -1035,23 +1035,60 @@ async function generarYSubirPdf(c){
 // garantía -- y mezclarlos ensuciaba el historial con entradas que Isaac no
 // había ingresado. El comprobante deja su rastro en `documentos`.
 function actualizarFichaCliente(key, c){
-  return db.ref('leon_clientes/' + key).once('value').then(async snap=>{
-    const row = snap.val();
-    if(!row) return;
-    const doc = await generarYSubirPdf(c);
-    if(doc){
-      if(!row.documentos) row.documentos = [];
-      row.documentos.push(doc);
-    }
-    const actualizarVenc = document.getElementById('chkVenc').checked && document.getElementById('vencrow').style.display !== 'none';
-    if(actualizarVenc){
-      row.inicia = c.fecha;
-      row.aviso = false;
-      row.contactoPaso = 0;
-      row.contactoFecha = null;
-      row.seguimiento = '';
-    }
-    return db.ref('leon_clientes/' + key).set(row);
+  // La decision de reiniciar el vencimiento se congela ACA, antes de cualquier
+  // espera. Antes se leia del formulario despues de generar el PDF, o sea 10 a
+  // 30 segundos mas tarde: si en ese rato se tocaba "Mantencion" o se apretaba
+  // "Limpiar formulario", la decision se daba vuelta sola y la ficha quedaba
+  // con la fecha de vencimiento vieja, sin ningun aviso.
+  const actualizarVenc = document.getElementById('chkVenc').checked
+    && document.getElementById('vencrow').style.display !== 'none';
+
+  return db.ref('leon_clientes/' + key).once('value').then(function(snap){
+    // Si la ficha no existe no se crea nada: este app adjunta a fichas del
+    // Indicador, no las inventa.
+    if(!snap.exists()) return null;
+
+    return generarYSubirPdf(c).then(function(doc){
+      // OJO -- aca NO se escribe la ficha entera, y es a proposito.
+      //
+      // Antes se leia la ficha completa, se esperaba a que el PDF se generara y
+      // subiera (10 a 30 segundos con señal de terreno), y recien ahi se hacia
+      // set(row) con la copia leida ANTES de esa espera. set() reemplaza el
+      // nodo entero: todo lo que se hubiera escrito en esa ficha durante esos
+      // segundos -- desde el Indicador en la oficina, o desde otra pestaña --
+      // se borraba sin dejar rastro. Es el mismo error que ya se arreglo en
+      // saveModal del Indicador, en su otra punta.
+      //
+      // Ahora se tocan solo los campos que a esta app le corresponden:
+      // el documento se agrega con una transaccion sobre su propio hijo, y las
+      // fechas van con update(), que es una escritura parcial.
+      const tareas = [];
+
+      if(doc){
+        tareas.push(
+          db.ref('leon_clientes/' + key + '/documentos').transaction(function(lista){
+            lista = lista || [];
+            // Una transaccion puede reejecutarse: sin este control, un
+            // reintento agregaria el mismo PDF dos veces.
+            for(var i=0;i<lista.length;i++){ if(lista[i] && lista[i].id === doc.id) return lista; }
+            lista.push(doc);
+            return lista;
+          })
+        );
+      }
+
+      if(actualizarVenc){
+        tareas.push(db.ref('leon_clientes/' + key).update({
+          inicia: c.fecha,
+          aviso: false,
+          contactoPaso: 0,
+          contactoFecha: null,
+          seguimiento: ''
+        }));
+      }
+
+      return Promise.all(tareas);
+    });
   });
 }
 
