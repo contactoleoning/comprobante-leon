@@ -519,7 +519,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v9</span>
+    <span style="opacity:.55;margin-left:10px">v10</span>
   </span>
 </footer>
 
@@ -757,6 +757,9 @@ function limpiarFormulario(){
    'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = false);
   toggleVencRow();
+  // Limpiar el formulario es empezar un comprobante nuevo: el numero tambien
+  // se suelta, si no el siguiente pisaba al anterior.
+  liberarFolio();
 }
 
 // ═══════════════════════════════════════
@@ -800,6 +803,16 @@ function asegurarFolio(){
       toast('No se pudo reservar el N° de comprobante — revisa tu conexión');
       throw err;
     });
+}
+
+// Deja el folio libre para que el proximo comprobante pida uno nuevo. Se llama
+// al guardar con exito y al limpiar el formulario. OJO: NO se llama despues de
+// imprimir -- imprimir el mismo comprobante dos veces, o imprimir y despues
+// guardar, tiene que usar el mismo numero que salio en el papel.
+function liberarFolio(){
+  folioReservado = null;
+  var el = document.getElementById('folioVal');
+  if(el) el.textContent = '— sin reservar —';
 }
 
 // Imprimir necesita el número en el papel, así que también lo reserva.
@@ -895,6 +908,18 @@ function guardarComprobanteConFolio(){
       setSyncStatus('ok', 'conectado');
       toast('Comprobante N° ' + c.folio + ' guardado');
       document.getElementById('btnSave').disabled = false;
+      // Liberar el folio: este comprobante ya quedo guardado, el siguiente
+      // tiene que pedir su propio numero.
+      //
+      // Sin esto se perdian comprobantes enteros. folioReservado se llenaba una
+      // vez y no volvia nunca a null, y asegurarFolio() corta de inmediato si
+      // ya tiene valor. Entonces: se guardaba el del cliente A con el folio
+      // 148, se apretaba "Limpiar formulario" (que tampoco lo reiniciaba), se
+      // llenaba para el cliente B y al guardar el .set() sobre
+      // leon_comprobantes/148 REEMPLAZABA el de A. El de A desaparecia de la
+      // base. Pasa emitiendo dos comprobantes seguidos sin recargar, que es
+      // exactamente como se usa en terreno con la PWA en el celular.
+      liberarFolio();
     })
     .catch(err=>{
       console.error('Error guardando comprobante:', err);
