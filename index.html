@@ -17,7 +17,6 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-check-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 <!-- Para adjuntar el comprobante como PDF real en la ficha del cliente del
      Indicador: html2canvas capta el #sheet tal como se ve, jsPDF lo envuelve
      en un PDF de una página carta -- el mismo tamaño que ya usa @media print. -->
@@ -549,7 +548,6 @@ const APP_CHECK_SITE_KEY = "6LcU5U4tAAAAAJG4eNx-5jw37hdqwwAWrRvpv6YY";
 const MODO_PRUEBA = false;
 
 let db = null;
-let fbStorage = null; // Storage del mismo proyecto -- ahí quedan los PDF adjuntos
 let clientesIndex = {};   // { "c123...": {id, cliente, direccion, ...} }
 let clienteActivo = null; // key seleccionada
 let modoCliente = 'existente';
@@ -625,14 +623,12 @@ function initFirebase(){
         document.getElementById('lock-overlay').style.display = 'none';
         setSyncStatus('syncing', 'conectando…');
         db = firebase.database(app);
-        fbStorage = firebase.storage(app);
         escucharClientes();
         firebase.database().ref('.info/connected').on('value', snap=>{
           if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
         });
       } else {
         db = null;
-        fbStorage = null;
         clientesIndex = {};
         setSyncStatus('', 'sin sesión');
         mostrarLock();
@@ -1014,7 +1010,7 @@ async function generarYSubirPdf(c){
   try{
     // Antes esto devolvía null en silencio y no había forma de saber por qué
     // el comprobante no llegaba a la ficha. Cada causa avisa distinto.
-    if(!fbStorage){ toast('El PDF no se adjuntó: no hay conexión con el almacenamiento'); return null; }
+    if(!db){ toast('El PDF no se adjuntó: no hay conexión con la base de datos'); return null; }
     if(typeof html2canvas !== 'function' || !window.jspdf){
       toast('El PDF no se adjuntó: no cargó el generador de PDF (revisa tu conexión)');
       return null;
@@ -1080,15 +1076,23 @@ async function generarYSubirPdf(c){
     // quepa completa (ancho o alto, lo que mande) y se centra en la hoja.
     const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
     const w = canvas.width * ratio, h = canvas.height * ratio;
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.92), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
     const blob = pdf.output('blob');
 
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const nombre = 'Comprobante_' + c.folio + '.pdf';
-    const ref = fbStorage.ref('documentos/' + id + '.pdf');
-    await ref.put(blob, { contentType: 'application/pdf' });
-    const url = await ref.getDownloadURL();
-    return { id, url, nombre, fecha: c.fecha };
+    // El PDF se guarda en la misma base de datos (leon_docs), no en Firebase
+    // Storage: Google exige una cuenta de facturación activa para Storage y la
+    // base de datos gratuita no. Se lee bajo demanda desde el Indicador, así
+    // que no pesa en la lista de clientes. La ficha guarda solo la referencia.
+    const dataUrl = await new Promise(function(res, rej){
+      const fr = new FileReader();
+      fr.onload = function(){ res(fr.result); };
+      fr.onerror = function(){ rej(new Error('no se pudo leer el PDF generado')); };
+      fr.readAsDataURL(blob);
+    });
+    await db.ref('leon_docs/' + id).set({ n: nombre, d: dataUrl, fecha: c.fecha });
+    return { id, nombre, fecha: c.fecha, store: 'rtdb' };
   } catch(e){
     console.error('No se pudo generar/subir el PDF del comprobante:', e);
     // El mensaje crudo importa: si es un permission-denied de Storage, la
