@@ -45,6 +45,20 @@ h1,h2,h3{font-family:'Barlow Condensed',sans-serif}
   --paper-line:#e4ddcd; --paper-line2:#cdc2a6; --paper-stripe:#f4efe3;
 }
 
+/* ── TEMA CLARO: solo la app; el "papel" ya era claro ── */
+:root[data-theme="light"]{
+  color-scheme:light;
+  --bg:#f3efe6; --bg2:#ffffff; --bg3:#efe9dc;
+  --brd:#ddd4c0; --brd2:#c8bca1;
+  --text:#201a10; --text2:#4a4234; --text3:#6f6552;
+  --gold:#8f6a1f; --gold-ink:#ffffff;
+  --green:#1f8a4c; --orange:#b45f06; --blue:#2b6fa8; --red:#c0392b;
+}
+/* La pantalla de acceso siempre es oscura: sus colores no se mueven con el tema. */
+:root[data-theme="light"] #lock-overlay{
+  --bg3:#212126; --brd2:#3a3a42; --text:#f6f6f8; --text3:#82828d; --gold:#cbab6e; --gold-ink:#1c1508; --red:#ff6b6b;
+}
+
 body{line-height:1.5}
 
 /* ── TOPBAR (misma familia visual que Cotizador / Indicador) ── */
@@ -94,6 +108,35 @@ body{line-height:1.5}
 .pill-toggle button.act{ background:var(--gold); border-color:var(--gold); color:var(--gold-ink); }
 .picker-hint{ font-size:11.5px; color:var(--text3); margin-top:8px; }
 .picker-hint b{ color:var(--orange); font-weight:700; }
+
+/* buscador de clientes */
+.combo{ position:relative; }
+.combo-list{
+  position:absolute; z-index:60; left:0; right:0; top:100%; margin-top:4px; max-height:340px; overflow:auto;
+  background:var(--bg2); border:2px solid var(--brd2); border-radius:var(--rs); box-shadow:0 14px 34px -10px rgba(0,0,0,.55);
+}
+.combo-item{ padding:9px 12px; cursor:pointer; border-bottom:1px solid var(--brd); font-size:14px; color:var(--text); }
+.combo-item:last-child{ border-bottom:none; }
+.combo-item.act,.combo-item:hover{ background:var(--bg3); }
+.combo-item small{ display:block; color:var(--text3); font-size:12px; margin-top:1px; }
+.combo-vacio{ padding:12px; color:var(--text3); font-size:13px; }
+
+/* avisos sobre la hoja (borrador, reimpresión) */
+.aviso{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; border:2px solid var(--gold); border-radius:var(--rs);
+  background:var(--bg2); color:var(--text); padding:10px 14px; margin-bottom:14px; font-size:13px; }
+.aviso span{ flex:1; min-width:200px; }
+.aviso .btn{ padding:7px 12px; }
+
+/* lista de comprobantes emitidos */
+#emitidos-ov{ position:fixed; inset:0; z-index:150; background:rgba(0,0,0,.6); display:none; align-items:flex-start; justify-content:center; padding:5vh 12px; overflow:auto; }
+#emitidos-ov.abierto{ display:flex; }
+.emitidos{ background:var(--bg2); border:2px solid var(--brd2); border-radius:var(--r); width:100%; max-width:760px; padding:16px; color:var(--text); }
+.emitidos h3{ margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.em-fila{ border-top:1px solid var(--brd); padding:10px 0; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+.em-info{ flex:1; min-width:220px; font-size:13.5px; }
+.em-info small{ display:block; color:var(--text3); font-size:12px; margin-top:2px; }
+.em-info b{ color:var(--gold); }
+.em-fila .btn{ padding:7px 11px; font-size:12px; }
 
 /* panel "desde la ficha": lo que el Indicador sabe del cliente elegido. Está
    FUERA de #sheet a propósito, así nunca entra al papel ni al PDF. */
@@ -349,6 +392,12 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
 #lock-overlay .lock-btn[disabled]{opacity:.55;cursor:default;filter:none}
 #lock-overlay .lock-err{color:var(--red);font-size:13px;font-weight:600;min-height:18px;text-align:center}
 </style>
+<script>
+/* Tema: misma clave que el Indicador (mismo origen), así el cambio vale para las dos.
+   Sin elección guardada se queda oscuro, como hasta ahora. Va aquí arriba para
+   que no haya un destello del otro tema al cargar. */
+try{ var __t = localStorage.getItem('leon-theme-nuevo'); if(__t==='light'||__t==='dark') document.documentElement.setAttribute('data-theme', __t); }catch(e){}
+</script>
 </head>
 <body>
 
@@ -370,11 +419,22 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
   <div class="nav-links">
     <a href="https://contactoleoning.github.io/indicador-leon" target="_blank" rel="noopener">Indicador de Vencimiento</a>
     <a href="https://contactoleoning.github.io/cotizador-leon" target="_blank" rel="noopener">Cotizador</a>
+    <a href="#" onclick="alternarTema();return false;" title="Cambiar entre tema oscuro y claro">Tema</a>
     <a href="#" onclick="cerrarSesion();return false;" title="Cerrar sesión">Salir</a>
   </div>
 </div>
 
 <div class="wrap">
+
+  <div class="aviso" id="aviso-borrador" style="display:none">
+    <span id="aviso-borrador-txt"></span>
+    <button class="btn primary" type="button" onclick="recuperarBorrador()">Recuperar</button>
+    <button class="btn ghost" type="button" onclick="descartarBorradorPendiente()">Descartar</button>
+  </div>
+  <div class="aviso" id="aviso-reimp" style="display:none">
+    <span id="aviso-reimp-txt"></span>
+    <button class="btn" type="button" onclick="salirReimpresion()">Salir y empezar uno nuevo</button>
+  </div>
 
   <div class="card">
     <h3>Cliente</h3>
@@ -388,9 +448,11 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
       </div>
       <div class="picker-field" id="wrap-select-cliente">
         <label>Buscar cliente (Indicador de Vencimiento)</label>
-        <select class="dselect" id="selCliente" onchange="onPickCliente(this.value)">
-          <option value="">— Escribe para buscar / selecciona —</option>
-        </select>
+        <div class="combo">
+          <input class="dinput" id="buscaCliente" type="text" placeholder="Escribe nombre, RUT, dirección o teléfono…"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="listaClientes"/>
+          <div class="combo-list" id="listaClientes" role="listbox" hidden></div>
+        </div>
       </div>
       <div class="picker-field" id="wrap-select-equipo" style="display:none">
         <label>Equipo a intervenir</label>
@@ -410,6 +472,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
     <button class="btn ghost" id="btnClear" onclick="limpiarFormulario()">Limpiar formulario</button>
     <button class="btn" id="btnPrint" onclick="imprimirComprobante()">Imprimir / Guardar PDF</button>
     <button class="btn" id="btnShare" onclick="compartirComprobante()">Compartir PDF</button>
+    <button class="btn" id="btnEmitidos" onclick="abrirEmitidos()">Emitidos</button>
     <button class="btn primary" id="btnSave" onclick="guardarComprobante()">Guardar comprobante</button>
   </div>
 
@@ -542,10 +605,17 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v14</span>
+    <span style="opacity:.55;margin-left:10px">v15</span>
   </span>
 </footer>
 
+<div id="emitidos-ov" onclick="if(event.target===this)cerrarEmitidos()">
+  <div class="emitidos">
+    <h3><span>Comprobantes emitidos</span><button class="btn ghost" type="button" onclick="cerrarEmitidos()">Cerrar</button></h3>
+    <input class="dinput" id="emFiltro" type="text" placeholder="Filtrar por cliente, N° o servicio…" autocomplete="off" oninput="pintarEmitidos()" style="margin-bottom:6px"/>
+    <div id="emLista"><div class="combo-vacio">Cargando…</div></div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -681,19 +751,91 @@ function escucharClientes(){
   });
 }
 
+// ═══════════════════════════════════════
+// BUSCADOR DE CLIENTES — antes era un <select> nativo que decía "escribe para
+// buscar" y no buscaba: con 50+ fichas había que recorrer la lista a ojo.
+// Ahora busca por nombre, razón social, contacto, RUT (con o sin puntos),
+// dirección, comuna y teléfono, todo junto y sin importar tildes.
+// ═══════════════════════════════════════
+function normTxt(t){ return String(t||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase(); }
+let comboItems = [], comboAct = -1;
+
+function pajarClienteBusqueda(r){
+  return normTxt([r.cliente, r.empresa, r.contacto, r.direccion, r.comuna, r.telefono, r.rut, r.rutEmpresa,
+    rutLimpio(r.rut), rutLimpio(r.rutEmpresa)].join(' '));
+}
+function filtrarClientes(q){
+  const toks = normTxt(q).split(/\s+/).filter(Boolean);
+  const todos = Object.entries(clientesIndex).sort((a,b)=> (a[1].cliente||'').localeCompare(b[1].cliente||'','es'));
+  if(!toks.length) return todos.slice(0, 40);
+  return todos.filter(([k,r])=>{ const h = pajarClienteBusqueda(r); return toks.every(t=>h.indexOf(t) >= 0); }).slice(0, 40);
+}
+function pintarCombo(){
+  const inp = document.getElementById('buscaCliente'), list = document.getElementById('listaClientes');
+  comboItems = filtrarClientes(inp.value);
+  comboAct = comboItems.length ? 0 : -1;
+  list.innerHTML = comboItems.length
+    ? comboItems.map(([k,r],i)=>'<div class="combo-item'+(i===0?' act':'')+'" role="option" data-i="'+i+'">'+
+        escHtml(r.cliente||'Sin nombre')+
+        '<small>'+escHtml([r.empresa, r.direccion, r.comuna].filter(Boolean).join(' · ') || '—')+'</small></div>').join('')
+    : '<div class="combo-vacio">Ningún cliente coincide. Revisa lo escrito o usa «Escribir a mano».</div>';
+  list.hidden = false; inp.setAttribute('aria-expanded','true');
+}
+function cerrarCombo(){
+  const list = document.getElementById('listaClientes');
+  list.hidden = true; document.getElementById('buscaCliente').setAttribute('aria-expanded','false');
+}
+function marcarComboAct(n){
+  const items = document.querySelectorAll('#listaClientes .combo-item');
+  if(!items.length) return;
+  comboAct = (n + items.length) % items.length;
+  items.forEach((el,i)=>el.classList.toggle('act', i===comboAct));
+  items[comboAct].scrollIntoView({ block:'nearest' });
+}
+function elegirDelCombo(i){
+  const it = comboItems[i];
+  if(!it) return;
+  document.getElementById('buscaCliente').value = it[1].cliente || '';
+  cerrarCombo();
+  onPickCliente(it[0]);
+}
+(function iniciarCombo(){
+  const inp = document.getElementById('buscaCliente'), list = document.getElementById('listaClientes');
+  inp.addEventListener('focus', pintarCombo);
+  inp.addEventListener('input', function(){
+    // Borrar todo el texto es soltar al cliente: así no queda vinculado a uno
+    // que ya no se ve en el campo.
+    if(!inp.value.trim() && clienteActivo) onPickCliente('');
+    pintarCombo();
+  });
+  inp.addEventListener('keydown', function(e){
+    if(e.key === 'ArrowDown'){ e.preventDefault(); if(list.hidden) pintarCombo(); else marcarComboAct(comboAct+1); }
+    else if(e.key === 'ArrowUp'){ e.preventDefault(); marcarComboAct(comboAct-1); }
+    else if(e.key === 'Enter'){ if(!list.hidden && comboAct >= 0){ e.preventDefault(); elegirDelCombo(comboAct); } }
+    else if(e.key === 'Escape'){ cerrarCombo(); }
+  });
+  // mousedown y no click: el blur del campo cerraría la lista antes del click.
+  list.addEventListener('mousedown', function(e){
+    const el = e.target.closest('.combo-item'); if(!el) return;
+    e.preventDefault(); elegirDelCombo(+el.dataset.i);
+  });
+  inp.addEventListener('blur', function(){ setTimeout(cerrarCombo, 120); });
+})();
+
 function renderSelectCliente(){
-  const sel = document.getElementById('selCliente');
-  const entries = Object.entries(clientesIndex).sort((a,b)=> (a[1].cliente||'').localeCompare(b[1].cliente||'','es'));
-  sel.innerHTML = '<option value="">— Escribe para buscar / selecciona —</option>' +
-    entries.map(([key,r])=> `<option value="${escAttr(key)}">${escHtml(r.cliente||'Sin nombre')}${r.comuna?(' — '+escHtml(r.comuna)):''}</option>`).join('');
-  // Esta función corre cada vez que llegan datos del Indicador, y al
-  // reconstruir las opciones el <select> volvía a mostrar el placeholder
-  // aunque el cliente siguiera vinculado por dentro. Parecía que se había
-  // perdido la selección justo al guardar (que es cuando más se dispara).
-  if(clienteActivo){ sel.value = clienteActivo; renderPanelFicha(); }
+  const entries = Object.keys(clientesIndex);
+  // Esta función corre cada vez que llegan datos del Indicador (y al guardar es
+  // cuando más). Si el cliente sigue vinculado hay que repintar su nombre, pero
+  // NO mientras se está escribiendo en el buscador: pisaría lo tecleado.
+  const inp = document.getElementById('buscaCliente');
+  if(clienteActivo){
+    const r = clientesIndex[clienteActivo];
+    if(r && document.activeElement !== inp) inp.value = r.cliente || '';
+    renderPanelFicha();
+  }
   document.getElementById('picker-hint').innerHTML =
     entries.length
-      ? `${entries.length} cliente(s) cargados desde el Indicador. Selecciona uno para autocompletar sus datos.`
+      ? `${entries.length} cliente(s) cargados desde el Indicador. Busca por nombre, RUT, dirección o teléfono.`
       : 'Aún no hay clientes en el Indicador, o la conexión sigue cargando.';
 }
 
@@ -713,6 +855,7 @@ function onPickCliente(key){
   const wrapEq = document.getElementById('wrap-select-equipo');
   equipoSel = null; solMarcadas = {}; durElegida = null;
   if(!r){ wrapEq.style.display='none'; renderPanelFicha(); return; }
+  document.getElementById('buscaCliente').value = r.cliente || '';
 
   // El comprobante es un documento para facturar: si la ficha tiene razón
   // social, sale a nombre de la empresa y con SU RUT (el Indicador los guarda
@@ -749,6 +892,7 @@ function onPickCliente(key){
     if(equipos.length===1) aplicarEquipo(equipos[0].eq, equipos[0].idx);
   }
   renderPanelFicha();
+  guardarBorrador();
 }
 function onPickEquipo(i){
   const r = clientesIndex[clienteActivo];
@@ -927,6 +1071,297 @@ document.getElementById('sheet').addEventListener('input', actualizarPanelDinami
 document.getElementById('sheet').addEventListener('change', actualizarPanelDinamico);
 
 // ═══════════════════════════════════════
+// VINCULAR UN COMPROBANTE "A MANO" — si no hay cliente elegido pero el RUT o el
+// teléfono coinciden con UNA sola ficha, se ofrece vincularlo. Sin esto el
+// comprobante quedaba sin adjuntar y sin avisar quién era el cliente. Nunca se
+// vincula solo y nunca se crea una ficha: este app adjunta, no inventa.
+// ═══════════════════════════════════════
+function digitosTel(t){ return String(t||'').replace(/\D/g,'').slice(-8); }
+function fichaCoincidente(){
+  const rut = rutLimpio(document.getElementById('cRut').value);
+  const tel = digitosTel(document.getElementById('cFono').value);
+  const dir = normTxt(document.getElementById('cDir').value).trim();
+  const entradas = Object.entries(clientesIndex);
+  const unica = function(cands){
+    if(cands.length === 1) return cands[0];
+    if(cands.length > 1 && dir){   // misma persona, varias direcciones: desempata la dirección
+      const porDir = cands.filter(([k,r])=>normTxt(r.direccion).trim() === dir);
+      if(porDir.length === 1) return porDir[0];
+    }
+    return null;
+  };
+  if(rut.length >= 8 && rutValido(rut) === true){
+    const hit = unica(entradas.filter(([k,r])=>rutLimpio(r.rut) === rut || rutLimpio(r.rutEmpresa) === rut));
+    if(hit) return hit;
+  }
+  if(tel.length === 8){
+    const hit = unica(entradas.filter(([k,r])=>digitosTel(r.telefono) === tel));
+    if(hit) return hit;
+  }
+  return null;
+}
+function ofrecerVinculo(){
+  if(clienteActivo || !db) return;
+  const hit = fichaCoincidente();
+  if(!hit) return;
+  const [key, r] = hit;
+  if(!confirm('Este comprobante no está vinculado a ningún cliente, pero coincide con la ficha de "' + (r.cliente||'sin nombre') +
+      '"' + (r.direccion ? ' (' + r.direccion + ')' : '') + '.\n\n¿Vincularlo para adjuntar el PDF a esa ficha?')) return;
+  // No se llama onPickCliente: pisaría con los datos de la ficha lo que ya se escribió.
+  setModoCliente('existente');
+  clienteActivo = key; equipoSel = null; solMarcadas = {}; durElegida = null;
+  document.getElementById('buscaCliente').value = r.cliente || '';
+  renderPanelFicha();
+}
+
+// ═══════════════════════════════════════
+// BORRADOR — lo escrito se guarda en este aparato mientras se llena. En terreno
+// la señal se cae y el celular se cierra solo: sin esto, perder la pestaña era
+// perder el comprobante entero. No guarda el N° ni la fecha (el comprobante
+// recuperado sale con el folio y el día de cuando se emite, no de cuando se
+// empezó). Todo va en try/catch: el modo privado puede bloquear el almacenamiento.
+// ═══════════════════════════════════════
+const CLAVE_BORRADOR = 'leon-comprobante-borrador';
+const NO_BORRADOR = ['empRut','empDir','empFono','empWeb','fDia','fMes','fAno'];
+let borradorPendiente = null;   // mientras el aviso está a la vista no se autoguarda
+let modoReimpresion = null;     // { folio } cuando se está reimprimiendo uno ya guardado
+let tBorrador = null;
+
+function camposBorrador(){
+  return Array.from(document.querySelectorAll('#sheet input[id], #sheet textarea[id]'))
+    .filter(el=>el.type !== 'checkbox' && NO_BORRADOR.indexOf(el.id) < 0);
+}
+function tieneContenido(){
+  return ['cCliente','cInfo','fMonto','fServicio','trabajo','obs'].some(id=>document.getElementById(id).value.trim())
+    || motivosSeleccionados().length > 0;
+}
+function guardarBorradorYa(){
+  if(borradorPendiente || modoReimpresion) return;
+  try{
+    if(!tieneContenido()){ localStorage.removeItem(CLAVE_BORRADOR); return; }
+    const valores = {};
+    camposBorrador().forEach(el=>{ valores[el.id] = el.value; });
+    const d = {
+      t: Date.now(),
+      nombre: document.getElementById('cCliente').value.trim(),
+      clienteId: clienteActivo || null,
+      equipoSel: equipoSel,
+      valores: valores,
+      motivos: Array.from(document.querySelectorAll('#motivos input[type=checkbox]:checked')).map(c=>c.value),
+      venc: document.getElementById('chkVenc').checked
+    };
+    localStorage.setItem(CLAVE_BORRADOR, JSON.stringify(d));
+  }catch(e){}
+}
+function guardarBorrador(){
+  clearTimeout(tBorrador);
+  tBorrador = setTimeout(guardarBorradorYa, 600);
+}
+function borrarBorrador(){
+  clearTimeout(tBorrador);
+  try{ localStorage.removeItem(CLAVE_BORRADOR); }catch(e){}
+}
+function hace(t){
+  const m = Math.round((Date.now()-t)/60000);
+  if(m < 1) return 'hace un momento';
+  if(m < 60) return 'hace ' + m + ' min';
+  const h = Math.round(m/60);
+  return h < 24 ? 'hace ' + h + ' h' : 'hace ' + Math.round(h/24) + ' días';
+}
+function buscarBorradorAlAbrir(){
+  try{
+    const raw = localStorage.getItem(CLAVE_BORRADOR);
+    if(!raw) return;
+    const d = JSON.parse(raw);
+    // Un borrador de hace más de una semana ya no es de nadie.
+    if(!d || !d.valores || Date.now() - d.t > 7*864e5){ localStorage.removeItem(CLAVE_BORRADOR); return; }
+    borradorPendiente = d;
+    document.getElementById('aviso-borrador-txt').innerHTML = 'Hay un comprobante <b>sin guardar</b>' +
+      (d.nombre ? ' de <b>' + escHtml(d.nombre) + '</b>' : '') + ' (' + hace(d.t) + ').';
+    document.getElementById('aviso-borrador').style.display = '';
+  }catch(e){}
+}
+function recuperarBorrador(){
+  const d = borradorPendiente;
+  if(!d) return;
+  if(d.clienteId && clientesIndex[d.clienteId]){
+    // Se vuelve a elegir al cliente (arma panel y lista de equipos) y encima se
+    // restaura lo escrito, que manda sobre los datos de la ficha.
+    setModoCliente('existente');
+    onPickCliente(d.clienteId);
+  } else if(d.clienteId){
+    toast('El cliente de ese borrador no está disponible: se recuperó el texto, sin vincular');
+  }
+  Object.keys(d.valores).forEach(id=>{ const el = document.getElementById(id); if(el) el.value = d.valores[id]; });
+  document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>{ c.checked = d.motivos.indexOf(c.value) >= 0; });
+  document.getElementById('chkVenc').checked = d.venc !== false;
+  if(d.equipoSel && clienteActivo === d.clienteId){
+    equipoSel = d.equipoSel;
+    const se = document.getElementById('selEquipo');
+    if(se && [...se.options].some(o=>o.value === String(d.equipoSel.idx))) se.value = String(d.equipoSel.idx);
+  }
+  borradorPendiente = null;
+  document.getElementById('aviso-borrador').style.display = 'none';
+  toggleVencRow(); renderPanelFicha();
+  toast('Borrador recuperado');
+}
+function descartarBorradorPendiente(){
+  borradorPendiente = null;
+  document.getElementById('aviso-borrador').style.display = 'none';
+  borrarBorrador();
+}
+document.getElementById('sheet').addEventListener('input', guardarBorrador);
+document.getElementById('sheet').addEventListener('change', guardarBorrador);
+
+// ═══════════════════════════════════════
+// EMITIDOS — los últimos comprobantes guardados. Dos usos, y a propósito
+// ninguno sobrescribe un comprobante guardado:
+//  · Reimprimir: carga el comprobante con SU número y fecha, para imprimirlo o
+//    compartirlo otra vez. Guardar queda bloqueado.
+//  · Usar como base: arma uno NUEVO con el mismo cliente y equipo (no copia el
+//    trabajo ni las mediciones, que son de ese día).
+// Corregir un comprobante ya guardado sigue siendo un trabajo aparte.
+// ═══════════════════════════════════════
+let emitidos = null;   // { folio: registro }
+
+function abrirEmitidos(){
+  if(!db){ toast('Todavía sin conexión: espera unos segundos'); return; }
+  document.getElementById('emitidos-ov').classList.add('abierto');
+  document.getElementById('emFiltro').value = '';
+  document.getElementById('emLista').innerHTML = '<div class="combo-vacio">Cargando…</div>';
+  db.ref('leon_comprobantes').orderByKey().limitToLast(40).once('value').then(function(snap){
+    emitidos = snap.val() || {};
+    pintarEmitidos();
+  }).catch(function(e){
+    console.error('No se pudieron leer los comprobantes:', e);
+    document.getElementById('emLista').innerHTML = '<div class="combo-vacio">No se pudieron leer. Revisa tu conexión.</div>';
+  });
+}
+function cerrarEmitidos(){ document.getElementById('emitidos-ov').classList.remove('abierto'); }
+function fechaCorta(iso){ const m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3]+'-'+m[2]+'-'+m[1] : '—'; }
+
+function pintarEmitidos(){
+  if(!emitidos) return;
+  const q = normTxt(document.getElementById('emFiltro').value).split(/\s+/).filter(Boolean);
+  const filas = Object.entries(emitidos)
+    .filter(([f,c])=>c && typeof c === 'object')
+    .sort((a,b)=>(+b[0]||0)-(+a[0]||0))
+    .filter(([f,c])=>{
+      const h = normTxt([f, (c.cliente||{}).nombre, (c.facturacion||{}).servicio, (c.motivos||[]).join(' ')].join(' '));
+      return q.every(t=>h.indexOf(t) >= 0);
+    });
+  document.getElementById('emLista').innerHTML = filas.length ? filas.map(([f,c])=>
+    '<div class="em-fila"><div class="em-info"><b>N° '+escHtml(String(f).padStart(6,'0'))+'</b> · '+escHtml(fechaCorta(c.fecha))+' · '+
+      escHtml((c.cliente||{}).nombre||'Sin nombre')+
+      '<small>'+escHtml([(c.motivos||[]).join(', '), (c.facturacion||{}).monto].filter(Boolean).join(' · ')||'—')+'</small></div>'+
+      '<button class="btn" type="button" onclick="reimprimirEmitido(\''+escAttr(f)+'\')">Reimprimir</button>'+
+      '<button class="btn" type="button" onclick="usarEmitidoComoBase(\''+escAttr(f)+'\')">Usar como base</button></div>'
+  ).join('') : '<div class="combo-vacio">Ningún comprobante coincide.</div>';
+}
+
+const MAPA_REGISTRO = {
+  cCliente:['cliente','nombre'], cRut:['cliente','rut'], cDir:['cliente','direccion'], cComuna:['cliente','comuna'],
+  cCiudad:['cliente','ciudad'], cFono:['cliente','fono'], cInfo:['cliente','info'],
+  fMonto:['facturacion','monto'], fServicio:['facturacion','servicio'], fPpto:['facturacion','ppto'], fOc:['facturacion','oc'],
+  eMarca:['equipo','marca'], eRefri:['equipo','refrigerante'], eModelo:['equipo','modelo'], eTecnicos:['equipo','tecnicos'],
+  tAComp:['parametros','aCompresor'], tAVentIdm:['parametros','aVentIdm'], tAVentOdm:['parametros','aVentOdm'],
+  tVoltaje:['parametros','voltaje'], tCargaPlaca:['parametros','cargaPlaca'], tCargaReal:['parametros','cargaReal'],
+  tPresSuc:['parametros','presionSuc'], tPresDesc:['parametros','presionDesc'],
+  trabajo:['trabajo'], obs:['observacion'], hIn:['horaIngreso'], hOut:['horaSalida']
+};
+function leerRuta(c, ruta){ let v = c; for(const k of ruta){ v = v == null ? v : v[k]; } return v == null ? '' : String(v); }
+function llenarDesdeRegistro(c, ids){
+  (ids || Object.keys(MAPA_REGISTRO)).forEach(id=>{ document.getElementById(id).value = leerRuta(c, MAPA_REGISTRO[id]); });
+}
+function marcarMotivos(lista){
+  const otros = (lista||[]).find(m=>/^Otros/.test(m));
+  document.querySelectorAll('#motivos input[type=checkbox]').forEach(cb=>{
+    cb.checked = (lista||[]).indexOf(cb.value) >= 0 || (cb.value === 'Otros' && !!otros);
+  });
+  document.getElementById('motivoOtro').value = otros && otros.indexOf(':') > 0 ? otros.slice(otros.indexOf(':')+1).trim() : '';
+}
+
+function reimprimirEmitido(f){
+  const c = emitidos && emitidos[f];
+  if(!c) return;
+  clearTimeout(tBorrador);
+  cerrarEmitidos();
+  // Un comprobante ya guardado no se vuelve a escribir desde aquí: nada de ficha.
+  clienteActivo = null; equipoSel = null; solMarcadas = {}; durElegida = null;
+  document.getElementById('buscaCliente').value = '';
+  renderPanelFicha();
+  llenarDesdeRegistro(c);
+  marcarMotivos(c.motivos);
+  document.getElementById('chkVenc').checked = false;
+  toggleVencRow();
+  // La fecha es la del comprobante original, y no se recalcula sola.
+  const iso = String(c.fecha||'').slice(0,10);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(iso)){
+    document.getElementById('fDia').value = iso.slice(8,10);
+    document.getElementById('fMes').value = iso.slice(5,7);
+    document.getElementById('fAno').value = iso.slice(2,4);
+    fechaISOActual = iso; fechaTocadaAMano = true; pintarFecha(true);
+  }
+  folioReservado = isNaN(+f) ? f : +f;
+  document.getElementById('folioVal').textContent = String(f).padStart(6,'0');
+  modoReimpresion = { folio: f };
+  document.getElementById('btnSave').disabled = true;
+  document.getElementById('aviso-reimp-txt').innerHTML = 'Reimprimiendo el comprobante <b>N° ' + escHtml(String(f).padStart(6,'0')) +
+    '</b>, ya guardado. Imprimir y Compartir usan ese número; Guardar está bloqueado.';
+  document.getElementById('aviso-reimp').style.display = '';
+  window.scrollTo(0, 0);
+}
+function salirReimpresion(){
+  modoReimpresion = null;
+  document.getElementById('aviso-reimp').style.display = 'none';
+  document.getElementById('btnSave').disabled = false;
+  ['cCliente','cRut','cDir','cComuna','cInfo','cFono'].forEach(id=>{ document.getElementById(id).value = ''; });
+  document.getElementById('cCiudad').value = 'Santiago';
+  ['fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos','tAComp','tAVentIdm','tAVentOdm','tVoltaje',
+   'tCargaPlaca','tCargaReal','tPresSuc','tPresDesc','trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value = ''; });
+  document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = false);
+  document.getElementById('motivoOtro').value = '';
+  document.getElementById('chkVenc').checked = true;
+  rellenarTecnico(); toggleVencRow();
+  liberarFolio();
+  fechaTocadaAMano = false; fechaISOActual = hoyISOChile(); pintarFecha(true);
+}
+
+function usarEmitidoComoBase(f){
+  const c = emitidos && emitidos[f];
+  if(!c) return;
+  if(modoReimpresion) salirReimpresion();
+  cerrarEmitidos();
+  liberarFolio();
+  const idCli = c.clienteId;
+  if(idCli && clientesIndex[idCli]){
+    setModoCliente('existente');
+    onPickCliente(idCli);
+  } else {
+    setModoCliente('manual');
+    document.getElementById('buscaCliente').value = '';
+    llenarDesdeRegistro(c, ['cCliente','cRut','cDir','cComuna','cCiudad','cFono']);
+  }
+  // El equipo del comprobante anterior; el resto (trabajo, mediciones, horas,
+  // monto) es de ese día y no se copia.
+  llenarDesdeRegistro(c, ['eMarca','eRefri','eModelo','eTecnicos']);
+  rellenarTecnico();
+  toast('Base armada desde el N° ' + String(f).padStart(6,'0') + ': completa el trabajo de hoy');
+  guardarBorrador();
+  window.scrollTo(0, 0);
+}
+
+// ═══════════════════════════════════════
+// TEMA — claro/oscuro, con la misma clave que el Indicador.
+// ═══════════════════════════════════════
+function alternarTema(){
+  const actual = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  const sig = actual === 'light' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', sig);
+  try{ localStorage.setItem('leon-theme-nuevo', sig); }catch(e){}
+}
+
+// ═══════════════════════════════════════
 // RUT — mismas reglas que el Indicador y el Cotizador. Un RUT mal escrito se
 // detecta solo por el dígito verificador: cargando a Carolina se tecleó
 // 73.394.670-8 en vez de 76.349.670-8, idénticos a ojo.
@@ -1056,7 +1491,11 @@ document.addEventListener('visibilitychange', function(){
 });
 
 function limpiarFormulario(){
+  // En una reimpresión "limpiar" es salir de ella: soltaría el folio y el
+  // siguiente Imprimir reservaría un número nuevo para un comprobante viejo.
+  if(modoReimpresion){ salirReimpresion(); return; }
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
+  borrarBorrador();
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
    'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
@@ -1215,8 +1654,12 @@ function guardarComprobante(){
     document.getElementById('fDia').focus();
     return;
   }
+  if(modoReimpresion){ toast('Este comprobante ya está guardado: sal de la reimpresión para emitir uno nuevo'); return; }
   // Tampoco se gasta un folio con un RUT que no cuadra, salvo que se confirme.
   if(!confirmarRut()) return;
+  // Sin cliente vinculado el PDF no tiene dónde adjuntarse: antes de gastar el
+  // folio se busca si el RUT o el teléfono ya están en una ficha.
+  ofrecerVinculo();
   document.getElementById('btnSave').disabled = true;
   asegurarFolio()
     .then(function(){ guardarComprobanteConFolio(); })
@@ -1250,6 +1693,7 @@ function guardarComprobanteConFolio(){
       toast('Comprobante N° ' + c.folio + ' guardado');
       document.getElementById('btnSave').disabled = false;
       solMarcadas = {}; durElegida = null; renderPanelFicha();
+      borrarBorrador();
       // Liberar el folio: este comprobante ya quedo guardado, el siguiente
       // tiene que pedir su propio numero.
       //
@@ -1589,6 +2033,7 @@ function actualizarFichaCliente(key, c){
 // ARRANQUE
 // ═══════════════════════════════════════
 toggleVencRow();
+buscarBorradorAlAbrir();
 initFirebase();
 if(MODO_PRUEBA){ setSyncStatus('syncing', 'modo prueba — sin escritura real'); }
 </script>
