@@ -95,6 +95,20 @@ body{line-height:1.5}
 .picker-hint{ font-size:11.5px; color:var(--text3); margin-top:8px; }
 .picker-hint b{ color:var(--orange); font-weight:700; }
 
+/* panel "desde la ficha": lo que el Indicador sabe del cliente elegido. Está
+   FUERA de #sheet a propósito, así nunca entra al papel ni al PDF. */
+.pf{ margin-top:12px; display:flex; flex-direction:column; gap:10px; }
+.pf-box{ border:1px solid var(--brd2); border-radius:var(--rs); background:var(--bg3); padding:10px 12px; font-size:12.5px; color:var(--text2); }
+.pf-box h4{ font-size:11px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:.05em; margin-bottom:6px; }
+.pf-chips{ display:flex; flex-wrap:wrap; gap:6px; }
+.pf-chip{ font-size:12px; font-weight:600; color:var(--text); background:var(--bg2); border:1px solid var(--brd2); border-radius:20px; padding:6px 12px; text-align:left; }
+.pf-chip:hover{ border-color:var(--gold); color:var(--gold); }
+.pf-chip small{ color:var(--text3); font-weight:600; }
+.pf-chk{ display:flex; gap:8px; align-items:flex-start; padding:3px 0; color:var(--text); }
+.pf-chk input{ margin-top:2px; }
+.pf-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; color:var(--text); }
+.pf-row input,.pf-row select{ background:var(--bg2); border:1px solid var(--brd2); border-radius:6px; color:var(--text); padding:5px 8px; font-size:13px; }
+.pf-row b{ color:var(--gold); }
 .toolbar{ display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; margin-bottom:14px; }
 .btn{
   font-size:12.5px; font-weight:700; letter-spacing:.02em; padding:10px 16px; border-radius:var(--rs);
@@ -384,6 +398,12 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
       </div>
     </div>
     <div class="picker-hint" id="picker-hint">Cargando lista de clientes desde el Indicador de Vencimiento…</div>
+    <div class="pf" id="panel-ficha" style="display:none">
+      <div class="pf-box" id="pf-cot" style="display:none"></div>
+      <div class="pf-box" id="pf-sol" style="display:none"></div>
+      <div class="pf-box" id="pf-inst" style="display:none"></div>
+      <div class="pf-box" id="pf-prox" style="display:none"></div>
+    </div>
   </div>
 
   <div class="toolbar">
@@ -455,7 +475,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
       <div class="band-col">
         <h2>Facturación</h2>
         <div class="grid g1">
-          <div class="field"><span class="lb">Monto a facturar</span><input class="num" id="fMonto" placeholder="$"/></div>
+          <div class="field"><span class="lb">Monto a facturar</span><input class="num" id="fMonto" placeholder="$" inputmode="numeric" autocomplete="off" oninput="onMontoInput(this)"/></div>
           <div class="field"><span class="lb">Servicio a facturar</span><input id="fServicio"/></div>
         </div>
         <div class="grid g2" style="margin-top:10px">
@@ -522,7 +542,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v13</span>
+    <span style="opacity:.55;margin-left:10px">v14</span>
   </span>
 </footer>
 
@@ -556,6 +576,10 @@ let clientesIndex = {};   // { "c123...": {id, cliente, direccion, ...} }
 let clienteActivo = null; // key seleccionada
 let modoCliente = 'existente';
 let folioReservado = null;
+let equipoSel = null;      // equipo elegido: { idx (posición REAL en r.equipos), marca, modelo }
+let solMarcadas = {};      // id de solicitud -> true, las que se cierran al guardar
+let durElegida = null;     // meses elegidos para la próxima mantención (null = la de la ficha)
+let nombreTecnico = '';    // nombre de quien tiene la sesión, desde /usuarios/{uid}
 
 function setSyncStatus(state, label){
   document.getElementById('sync-dot').className = 'sync-dot ' + state;
@@ -628,6 +652,7 @@ function initFirebase(){
         setSyncStatus('syncing', 'conectando…');
         db = firebase.database(app);
         escucharClientes();
+        cargarNombreTecnico(user);
         firebase.database().ref('.info/connected').on('value', snap=>{
           if(!snap.val()) setSyncStatus('syncing', 'reconectando…');
         });
@@ -665,7 +690,7 @@ function renderSelectCliente(){
   // reconstruir las opciones el <select> volvía a mostrar el placeholder
   // aunque el cliente siguiera vinculado por dentro. Parecía que se había
   // perdido la selección justo al guardar (que es cuando más se dispara).
-  if(clienteActivo) sel.value = clienteActivo;
+  if(clienteActivo){ sel.value = clienteActivo; renderPanelFicha(); }
   document.getElementById('picker-hint').innerHTML =
     entries.length
       ? `${entries.length} cliente(s) cargados desde el Indicador. Selecciona uno para autocompletar sus datos.`
@@ -678,7 +703,7 @@ function setModoCliente(m){
   document.getElementById('tgl-manual').classList.toggle('act', m==='manual');
   document.getElementById('wrap-select-cliente').style.display = m==='existente' ? '' : 'none';
   document.getElementById('wrap-select-equipo').style.display = 'none';
-  if(m==='manual'){ clienteActivo = null; }
+  if(m==='manual'){ clienteActivo = null; equipoSel = null; solMarcadas = {}; durElegida = null; renderPanelFicha(); }
 }
 
 function onPickCliente(key){
@@ -686,7 +711,8 @@ function onPickCliente(key){
   const r = key ? clientesIndex[key] : null;
   const selEq = document.getElementById('selEquipo');
   const wrapEq = document.getElementById('wrap-select-equipo');
-  if(!r){ wrapEq.style.display='none'; return; }
+  equipoSel = null; solMarcadas = {}; durElegida = null;
+  if(!r){ wrapEq.style.display='none'; renderPanelFicha(); return; }
 
   // El comprobante es un documento para facturar: si la ficha tiene razón
   // social, sale a nombre de la empresa y con SU RUT (el Indicador los guarda
@@ -710,22 +736,28 @@ function onPickCliente(key){
   document.getElementById('cInfo').value = r.servicio||r.detalle||'';
   document.getElementById('cFono').value = r.telefono ? (r.telefonoFijo ? r.telefono : ('+569 '+r.telefono)) : '';
 
-  const equipos = (r.equipos||[]).filter(eq=>(eq.marca||eq.modelo||eq.ubicacion||'').trim());
+  // Se guarda la posición REAL de cada equipo en la ficha, no la de la lista
+  // ya filtrada: si hay un equipo en blanco en medio, el índice de la lista
+  // apunta al equipo equivocado (y ahora además se escribe sobre él).
+  const equipos = (r.equipos||[]).map((eq,idx)=>({eq,idx})).filter(x=>(x.eq.marca||x.eq.modelo||x.eq.ubicacion||'').trim());
   if(equipos.length > 1){
     wrapEq.style.display='';
     selEq.innerHTML = '<option value="">— Selecciona equipo —</option>' +
-      equipos.map((eq,i)=> `<option value="${i}">${escHtml(eq.ubicacion||('Equipo '+(i+1)))} — ${escHtml(eq.marca||'')} ${escHtml(eq.modelo||'')}</option>`).join('');
+      equipos.map((x,i)=> `<option value="${x.idx}">${escHtml(x.eq.ubicacion||('Equipo '+(i+1)))} — ${escHtml(x.eq.marca||'')} ${escHtml(x.eq.modelo||'')}</option>`).join('');
   } else {
     wrapEq.style.display='none';
-    if(equipos.length===1) aplicarEquipo(equipos[0]);
+    if(equipos.length===1) aplicarEquipo(equipos[0].eq, equipos[0].idx);
   }
+  renderPanelFicha();
 }
 function onPickEquipo(i){
   const r = clientesIndex[clienteActivo];
   const eq = r && r.equipos && r.equipos[+i];
-  if(eq) aplicarEquipo(eq);
+  if(eq) aplicarEquipo(eq, +i); else { equipoSel = null; actualizarPanelDinamico(); }
 }
-function aplicarEquipo(eq){
+function aplicarEquipo(eq, idx){
+  equipoSel = { idx: idx, marca: eq.marca||'', modelo: eq.modelo||'' };
+  actualizarPanelDinamico();
   document.getElementById('eMarca').value = eq.marca||'';
   document.getElementById('eModelo').value = (eq.modelo||'') + (eq.btu?(' ('+eq.btu+' BTU)'):'');
 }
@@ -733,7 +765,166 @@ function aplicarEquipo(eq){
 function toggleVencRow(){
   const mant = document.querySelector('#motivos input[value="Mantención"]');
   document.getElementById('vencrow').style.display = mant.checked ? '' : 'none';
+  actualizarPanelDinamico();
 }
+
+// ═══════════════════════════════════════
+// MONTO — con puntos de miles mientras se escribe. Se guarda como texto
+// ("$45.000"): el Indicador lo lee quitando todo lo que no sea dígito, así que
+// "45 mil" valía 45. Con este formato solo entran dígitos.
+// ═══════════════════════════════════════
+function formatoMonto(v){
+  const n = String(v==null ? '' : v).replace(/\D/g,'').replace(/^0+(?=\d)/,'');
+  return n ? '$' + n.replace(/\B(?=(\d{3})+(?!\d))/g,'.') : '';
+}
+function onMontoInput(el){
+  const antes = el.value.length, pos = el.selectionStart;
+  el.value = formatoMonto(el.value);
+  const d = el.value.length - antes;
+  try{ el.setSelectionRange(Math.max(1,pos+d), Math.max(1,pos+d)); }catch(e){}
+}
+function ponerValor(id, v){
+  const el = document.getElementById(id);
+  el.value = v;
+  el.dispatchEvent(new Event('input', { bubbles:true }));
+}
+
+// ═══════════════════════════════════════
+// TÉCNICO — quien tiene la sesión. Hoy es Isaac solo; cuando sumen gente, cada
+// comprobante saldrá con el nombre de quien lo emite sin escribirlo.
+// ═══════════════════════════════════════
+function cargarNombreTecnico(user){
+  nombreTecnico = '';
+  db.ref('usuarios/' + user.uid).once('value').then(function(snap){
+    const v = snap.val() || {};
+    nombreTecnico = String(v.nombre || v.Nombre || '').trim();
+    rellenarTecnico();
+  }).catch(function(e){ console.error('No se pudo leer el nombre del técnico:', e); });
+}
+// Solo rellena si está vacío: lo que alguien escribió a mano manda.
+function rellenarTecnico(){
+  const el = document.getElementById('eTecnicos');
+  if(el && nombreTecnico && !el.value.trim()) el.value = nombreTecnico;
+}
+
+// ═══════════════════════════════════════
+// PANEL "DESDE LA FICHA" — lo que el Indicador sabe del cliente elegido.
+// Todo son sugerencias o acciones que Isaac decide; nada se rellena ni se
+// escribe sin que lo toque o lo marque.
+// ═══════════════════════════════════════
+const MESES_CORTOS = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+function motivoMarcado(valor){
+  const c = document.querySelector('#motivos input[value="' + valor + '"]');
+  return !!(c && c.checked);
+}
+// Misma regla que el Indicador: si el día no existe en el mes destino, cae al
+// último día de ese mes en vez de desbordarse al siguiente.
+function sumarMeses(iso, m){
+  const [y,mo,d] = iso.split('-').map(Number);
+  const total = (mo-1) + m, anio = y + Math.floor(total/12), mes = ((total%12)+12)%12;
+  const r = new Date(anio, mes, d);
+  if(r.getMonth() !== mes) r.setDate(0);
+  return r;
+}
+function fechaLinda(d){ return d.getDate() + ' ' + MESES_CORTOS[d.getMonth()] + ' ' + d.getFullYear(); }
+// La cotización guarda DD-MM-YYYY o YYYY-MM-DD.
+function cotFechaISO(c){
+  const f = String((c && c.fecha) || '');
+  const m = f.match(/^(\d{2})-(\d{2})-(\d{4})/);
+  return m ? (m[3]+'-'+m[2]+'-'+m[1]) : f.slice(0,10);
+}
+
+function renderPanelFicha(){
+  const panel = document.getElementById('panel-ficha');
+  const r = clienteActivo ? clientesIndex[clienteActivo] : null;
+  if(!r){ panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  // 1. Cotizaciones: se ofrecen, no se aplican solas. Las rechazadas no sirven.
+  const boxCot = document.getElementById('pf-cot');
+  const cots = (r.cotizaciones||[]).map((c,i)=>({c,i}))
+    .filter(x=>x.c && x.c.estado !== 'rechazada')
+    .sort((a,b)=>cotFechaISO(b.c).localeCompare(cotFechaISO(a.c))).slice(0,4);
+  if(cots.length){
+    boxCot.innerHTML = '<h4>Cotizaciones de este cliente — toca una para traer monto, servicio y N° al comprobante</h4><div class="pf-chips">' +
+      cots.map(x=>'<button type="button" class="pf-chip" onclick="usarCotizacion('+x.i+')">N°'+escHtml(String(x.c.nro||'—'))+
+        ' · '+escHtml(formatoMonto(x.c.monto)||'sin monto')+
+        (x.c.servicio?' · '+escHtml(x.c.servicio):'')+
+        ' <small>'+(x.c.estado==='concretada'?'concretada':'pendiente')+'</small></button>').join('') + '</div>';
+    boxCot.style.display = '';
+  } else { boxCot.style.display = 'none'; boxCot.innerHTML = ''; }
+
+  // 2. Solicitudes pendientes de la ficha, para cerrarlas al guardar.
+  const boxSol = document.getElementById('pf-sol');
+  const sols = (r.solicitudes||[]).filter(s=>s && !s.hecha);
+  if(sols.length){
+    boxSol.innerHTML = '<h4>Solicitudes pendientes — marca las que este servicio resolvió; se cierran al guardar</h4>' +
+      sols.map(s=>'<label class="pf-chk"><input type="checkbox" '+(solMarcadas[s.id]?'checked':'')+
+        ' onchange="marcarSolicitud(\''+escAttr(s.id)+'\',this.checked)"/> <span>'+escHtml(s.texto||'(sin texto)')+'</span></label>').join('');
+    boxSol.style.display = '';
+  } else { boxSol.style.display = 'none'; boxSol.innerHTML = ''; }
+
+  // 3 y 4 dependen de lo que se marque en el formulario: se arman una vez y
+  // después solo se muestran, ocultan o cambian de texto.
+  // El panel se rehace cada vez que llegan datos del Indicador; la garantía
+  // que se estaba escribiendo no puede borrarse por eso.
+  const garPrevia = (document.getElementById('pfGarantia')||{}).value || '';
+  const boxInst = document.getElementById('pf-inst');
+  boxInst.innerHTML = '<h4>Instalación</h4><div class="pf-row"><span id="pf-inst-txt"></span>' +
+    '<label>Garantía hasta (opcional) <input type="date" id="pfGarantia"/></label></div>';
+  document.getElementById('pfGarantia').value = garPrevia;
+  const boxProx = document.getElementById('pf-prox');
+  boxProx.innerHTML = '<h4>Próxima mantención</h4><div class="pf-row"><span id="pf-prox-txt"></span>' +
+    '<label>cada <select id="pfDur" onchange="durElegida=+this.value; actualizarPanelDinamico();">' +
+    [4,6,12].map(n=>'<option value="'+n+'">'+n+' meses</option>').join('') + '</select></label></div>';
+  actualizarPanelDinamico();
+}
+
+function marcarSolicitud(id, on){ if(on) solMarcadas[id] = true; else delete solMarcadas[id]; }
+
+function usarCotizacion(i){
+  const r = clientesIndex[clienteActivo];
+  const c = r && r.cotizaciones && r.cotizaciones[i];
+  if(!c) return;
+  if(c.monto) ponerValor('fMonto', formatoMonto(c.monto));
+  if(c.servicio) ponerValor('fServicio', c.servicio);
+  if(c.nro) ponerValor('fPpto', String(c.nro));
+  toast('Cotización N°' + (c.nro||'—') + ' traída al comprobante');
+}
+
+function actualizarPanelDinamico(){
+  const r = clienteActivo ? clientesIndex[clienteActivo] : null;
+  const boxInst = document.getElementById('pf-inst'), boxProx = document.getElementById('pf-prox');
+  if(!r || !boxInst || !document.getElementById('pf-inst-txt')) return;
+
+  // Instalación: se anota en el equipo elegido (fecha de instalación, y
+  // garantía si se indica). Sin equipo elegido no hay dónde escribirla.
+  const instala = motivoMarcado('Instalación') && equipoSel;
+  boxInst.style.display = instala ? '' : 'none';
+  if(instala){
+    document.getElementById('pf-inst-txt').innerHTML = 'Al guardar, se registra en el equipo <b>' +
+      escHtml((equipoSel.marca+' '+equipoSel.modelo).trim()||'elegido') + '</b> como instalado el <b>' +
+      escHtml(fechaLinda(new Date(fechaISOActual+'T00:00:00'))) + '</b>.';
+  }
+
+  // Próxima mantención: solo si se va a reiniciar el vencimiento.
+  const venc = motivoMarcado('Mantención') && document.getElementById('chkVenc').checked;
+  boxProx.style.display = venc ? '' : 'none';
+  if(venc){
+    const dur = durElegida || +r.duracion || 6;
+    const sel = document.getElementById('pfDur');
+    if(![...sel.options].some(o=>+o.value===dur)){
+      sel.add(new Option(dur+' meses', dur));
+    }
+    sel.value = String(dur);
+    document.getElementById('pf-prox-txt').innerHTML = 'Quedará para el <b>' +
+      escHtml(fechaLinda(sumarMeses(fechaISOActual, dur))) + '</b>' +
+      (durElegida && durElegida !== (+r.duracion||6) ? ' <small>(cambia el intervalo de la ficha)</small>' : '') + '.';
+  }
+}
+document.getElementById('chkVenc').addEventListener('change', actualizarPanelDinamico);
+document.getElementById('sheet').addEventListener('input', actualizarPanelDinamico);
+document.getElementById('sheet').addEventListener('change', actualizarPanelDinamico);
 
 // ═══════════════════════════════════════
 // RUT — mismas reglas que el Indicador y el Cotizador. Un RUT mal escrito se
@@ -870,7 +1061,10 @@ function limpiarFormulario(){
    'tAComp','tAVentIdm','tAVentOdm','tVoltaje','tCargaPlaca','tCargaReal','tPresSuc','tPresDesc',
    'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = false);
+  rellenarTecnico();
+  solMarcadas = {}; durElegida = null;
   toggleVencRow();
+  renderPanelFicha();
   // Limpiar el formulario es empezar un comprobante nuevo: el numero tambien
   // se suelta, si no el siguiente pisaba al anterior.
   liberarFolio();
@@ -1055,6 +1249,7 @@ function guardarComprobanteConFolio(){
       setSyncStatus('ok', 'conectado');
       toast('Comprobante N° ' + c.folio + ' guardado');
       document.getElementById('btnSave').disabled = false;
+      solMarcadas = {}; durElegida = null; renderPanelFicha();
       // Liberar el folio: este comprobante ya quedo guardado, el siguiente
       // tiene que pedir su propio numero.
       //
@@ -1294,6 +1489,15 @@ function actualizarFichaCliente(key, c){
   // con la fecha de vencimiento vieja, sin ningun aviso.
   const actualizarVenc = document.getElementById('chkVenc').checked
     && document.getElementById('vencrow').style.display !== 'none';
+  // Igual que arriba: lo demás que se escribe en la ficha también se congela
+  // ACÁ, antes de esperar el PDF. Si se leyera después, tocar un casillero
+  // durante esos segundos cambiaría lo que se guarda sin avisar.
+  const solCerrar = Object.keys(solMarcadas);
+  const durNueva = durElegida;
+  const instalar = (motivoMarcado('Instalación') && equipoSel)
+    ? { idx: equipoSel.idx, marca: equipoSel.marca, modelo: equipoSel.modelo,
+        garantia: (document.getElementById('pfGarantia')||{}).value || '' }
+    : null;
 
   return db.ref('leon_clientes/' + key).once('value').then(function(snap){
     // Si la ficha no existe no se crea nada: este app adjunta a fichas del
@@ -1329,17 +1533,54 @@ function actualizarFichaCliente(key, c){
         );
       }
 
+      // Todo lo que sigue es escritura parcial (update / transacción sobre un
+      // hijo), nunca la ficha entera: ver el comentario de arriba.
+      //
+      // `snap` es de ANTES de esperar el PDF (hasta 30 s). Lo que se compara
+      // (intervalo, posición del equipo) se relee ahora, no de esa copia vieja.
+      return db.ref('leon_clientes/' + key).once('value').then(function(fresco){
+      const actual = fresco.val() || {};
+
       if(actualizarVenc){
-        tareas.push(db.ref('leon_clientes/' + key).update({
+        const cambios = {
           inicia: c.fecha,
           aviso: false,
           contactoPaso: 0,
           contactoFecha: null,
           seguimiento: ''
+        };
+        // El intervalo solo se toca si se eligió otro distinto al de la ficha.
+        if(durNueva && durNueva !== (+actual.duracion || 6)) cambios.duracion = durNueva;
+        tareas.push(db.ref('leon_clientes/' + key).update(cambios));
+      }
+
+      if(instalar){
+        // La posición del equipo pudo cambiar desde que se eligió (alguien
+        // agregó o borró uno en el Indicador). Se escribe solo si en esa
+        // posición sigue estando el mismo equipo.
+        const eq = actual.equipos && actual.equipos[instalar.idx];
+        if(eq && (eq.marca||'') === instalar.marca && (eq.modelo||'') === instalar.modelo){
+          const ruta = 'equipos/' + instalar.idx + '/';
+          const cambios = {};
+          cambios[ruta + 'instalacion'] = c.fecha;
+          if(instalar.garantia) cambios[ruta + 'garantia'] = instalar.garantia;
+          tareas.push(db.ref('leon_clientes/' + key).update(cambios));
+        } else {
+          toast('No se anotó la instalación: el equipo ya no está donde estaba en la ficha');
+        }
+      }
+
+      if(solCerrar.length){
+        tareas.push(db.ref('leon_clientes/' + key + '/solicitudes').transaction(function(lista){
+          if(!Array.isArray(lista)) return lista;
+          return lista.map(function(s){
+            return (s && solCerrar.indexOf(s.id) >= 0) ? Object.assign({}, s, { hecha:true }) : s;
+          });
         }));
       }
 
       return Promise.all(tareas);
+      });
     });
   });
 }
