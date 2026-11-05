@@ -167,6 +167,9 @@ body{line-height:1.5}
 .field input:disabled{ background:var(--paper-stripe); color:var(--paper-muted); }
 .field input:focus-visible, .field select:focus-visible, .field textarea:focus-visible{ outline:2px solid var(--gold); outline-offset:1px; }
 .field textarea{ resize:vertical; font-family:inherit; }
+/* RUT que no cuadra. Cuelga de :not(.capturando-pdf) y en impresión manda el
+   borde gris de @media print, así el rojo nunca llega al papel ni al PDF. */
+body:not(.capturando-pdf) .field input.rut-mal{ border-color:var(--red); }
 
 .motivos{ display:flex; flex-direction:column; }
 .chk{ display:flex; align-items:center; gap:9px; font-size:13px; padding:6px 2px; border-bottom:1px dotted var(--paper-line); }
@@ -386,6 +389,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
   <div class="toolbar">
     <button class="btn ghost" id="btnClear" onclick="limpiarFormulario()">Limpiar formulario</button>
     <button class="btn" id="btnPrint" onclick="imprimirComprobante()">Imprimir / Guardar PDF</button>
+    <button class="btn" id="btnShare" onclick="compartirComprobante()">Compartir PDF</button>
     <button class="btn primary" id="btnSave" onclick="guardarComprobante()">Guardar comprobante</button>
   </div>
 
@@ -421,7 +425,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
       <h2>Datos del cliente</h2>
       <div class="grid g2">
         <div class="field"><span class="lb">Cliente</span><input id="cCliente" placeholder="Nombre / razón social"/></div>
-        <div class="field"><span class="lb">R.U.T.</span><input id="cRut" placeholder="0.000.000-0"/></div>
+        <div class="field"><span class="lb">R.U.T.</span><input id="cRut" placeholder="0.000.000-0" maxlength="12" autocomplete="off" oninput="onRutInput(this)" onblur="onRutBlur(this)"/></div>
         <div class="field"><span class="lb">Dirección</span><input id="cDir" placeholder="Calle N°"/></div>
         <div class="field"><span class="lb">Comuna</span><input id="cComuna" placeholder="Comuna"/></div>
         <div class="field"><span class="lb">Ciudad</span><input id="cCiudad" value="Santiago"/></div>
@@ -518,7 +522,7 @@ body.capturando-pdf .sheet{ width:980px !important; max-width:none !important; }
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v12</span>
+    <span style="opacity:.55;margin-left:10px">v13</span>
   </span>
 </footer>
 
@@ -684,7 +688,23 @@ function onPickCliente(key){
   const wrapEq = document.getElementById('wrap-select-equipo');
   if(!r){ wrapEq.style.display='none'; return; }
 
-  document.getElementById('cCliente').value = r.cliente||'';
+  // El comprobante es un documento para facturar: si la ficha tiene razón
+  // social, sale a nombre de la empresa y con SU RUT (el Indicador los guarda
+  // aparte, en el bloque "Facturar a"). Antes el RUT no se traía nunca, y con
+  // el nombre de la persona no habría servido de todos modos.
+  //
+  // Si hay razón social pero falta el RUT de la empresa, el RUT queda vacío a
+  // propósito: poner el de la persona bajo el nombre de la empresa sería un
+  // documento con datos cruzados, peor que uno con el RUT en blanco.
+  const esEmpresa = !!(r.empresa || r.rutEmpresa);
+  document.getElementById('cCliente').value = (r.empresa || r.cliente || '');
+  const rutDoc = r.rutEmpresa || (r.empresa ? '' : r.rut) || '';
+  const inRut = document.getElementById('cRut');
+  inRut.value = rutFormateado(rutDoc);
+  inRut.classList.remove('rut-mal');
+  if(esEmpresa && r.empresa && !r.rutEmpresa){
+    toast('La ficha tiene razón social pero no el RUT de la empresa: complétalo aquí o en el Indicador');
+  }
   document.getElementById('cDir').value = r.direccion||'';
   document.getElementById('cComuna').value = r.comuna||'';
   document.getElementById('cInfo').value = r.servicio||r.detalle||'';
@@ -713,6 +733,59 @@ function aplicarEquipo(eq){
 function toggleVencRow(){
   const mant = document.querySelector('#motivos input[value="Mantención"]');
   document.getElementById('vencrow').style.display = mant.checked ? '' : 'none';
+}
+
+// ═══════════════════════════════════════
+// RUT — mismas reglas que el Indicador y el Cotizador. Un RUT mal escrito se
+// detecta solo por el dígito verificador: cargando a Carolina se tecleó
+// 73.394.670-8 en vez de 76.349.670-8, idénticos a ojo.
+// ═══════════════════════════════════════
+function rutLimpio(v){ return String(v||'').toUpperCase().replace(/[^0-9K]/g,''); }
+function rutFormateado(v){
+  const t = rutLimpio(v);
+  if(!t) return '';
+  if(t.length===1) return t;
+  return t.slice(0,-1).replace(/\B(?=(\d{3})+(?!\d))/g,'.') + '-' + t.slice(-1);
+}
+function rutDV(cuerpo){
+  let s=0, m=2;
+  for(let i=cuerpo.length-1;i>=0;i--){ s += parseInt(cuerpo.charAt(i),10)*m; m = (m===7) ? 2 : m+1; }
+  const r = 11-(s%11);
+  return r===11 ? '0' : r===10 ? 'K' : String(r);
+}
+// null = todavía lo está escribiendo (menos de 8 caracteres), no molestar.
+function rutValido(v){
+  const t = rutLimpio(v);
+  if(t.length<8) return null;
+  return rutDV(t.slice(0,-1)) === t.slice(-1);
+}
+// Mientras escribe solo se formatea; avisar en cada tecla sería peor que no
+// avisar (un RUT de empresa pasa por un largo intermedio que casi siempre da
+// inválido). El chequeo va al salir del campo.
+function onRutInput(el){
+  const antes = el.value.length, pos = el.selectionStart;
+  el.value = rutFormateado(el.value);
+  const d = el.value.length - antes;
+  try{ el.setSelectionRange(pos+d, pos+d); }catch(e){}
+  el.classList.remove('rut-mal');
+}
+function onRutBlur(el){
+  el.classList.toggle('rut-mal', rutValido(el.value) === false);
+}
+// Barrera antes de guardar o imprimir. Es un confirm y no un bloqueo duro: un
+// cliente extranjero con pasaporte en vez de RUT no tiene cómo cuadrar, y
+// dejar a Isaac sin poder emitir en terreno es peor que un aviso.
+function confirmarRut(){
+  const el = document.getElementById('cRut');
+  const v = el.value.trim();
+  if(!v) return true;
+  const ok = rutValido(v);
+  if(ok === true) return true;
+  el.classList.add('rut-mal');
+  el.focus();
+  return confirm(ok === false
+    ? 'El RUT "' + v + '" no cuadra (el dígito verificador no corresponde). ¿Continuar igual?'
+    : 'El RUT "' + v + '" parece incompleto. ¿Continuar igual?');
 }
 
 // ═══════════════════════════════════════
@@ -879,6 +952,7 @@ function imprimirComprobante(){
   // Lo impreso tambien tiene que llevar la fecha de hoy, no la de cuando se
   // abrio la app.
   refrescarFechaSiCorresponde();
+  if(!confirmarRut()) return;
   asegurarFolio().then(function(){
     window.print();
   }).catch(function(){ /* el toast ya avisó */ });
@@ -947,6 +1021,8 @@ function guardarComprobante(){
     document.getElementById('fDia').focus();
     return;
   }
+  // Tampoco se gasta un folio con un RUT que no cuadra, salvo que se confirme.
+  if(!confirmarRut()) return;
   document.getElementById('btnSave').disabled = true;
   asegurarFolio()
     .then(function(){ guardarComprobanteConFolio(); })
@@ -1000,6 +1076,165 @@ function guardarComprobanteConFolio(){
     });
 }
 
+// ═══════════════════════════════════════
+// COMPARTIR — manda el PDF al cliente con el menú de compartir del equipo
+// (WhatsApp, correo, AirDrop...). En terreno es el paso natural al terminar.
+// Igual que imprimir: el papel/PDF necesita su número, así que reserva el folio
+// (y lo conserva si después se guarda). No guarda ni adjunta nada por sí solo.
+// ═══════════════════════════════════════
+let pdfListo = null;   // PDF ya armado que quedó esperando un segundo toque
+const TXT_COMPARTIR = 'Compartir PDF';
+
+function descartarPdfListo(){
+  pdfListo = null;
+  const b = document.getElementById('btnShare');
+  if(b && !b.disabled) b.textContent = TXT_COMPARTIR;
+}
+// Cualquier cambio en la hoja deja viejo al PDF que estaba esperando.
+document.getElementById('sheet').addEventListener('input', descartarPdfListo);
+document.getElementById('sheet').addEventListener('change', descartarPdfListo);
+
+function descargarPdf(blob, nombre){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+}
+
+async function enviarPdf(archivo, folio){
+  // Chrome de escritorio y Firefox a veces tienen share() sin archivos: en ese
+  // caso se descarga el PDF y listo.
+  if(!(navigator.canShare && navigator.canShare({ files:[archivo] }))){
+    descargarPdf(archivo, archivo.name);
+    toast('Este equipo no puede compartir archivos: el PDF se descargó');
+    return;
+  }
+  try{
+    await navigator.share({
+      files: [archivo],
+      title: 'Comprobante N° ' + folio,
+      text: 'Comprobante de servicio N° ' + folio + ' — León Ingeniería y Proyectos SpA'
+    });
+  } catch(e){
+    if(e && e.name === 'AbortError') return;         // cerró el menú: no es un error
+    if(e && e.name === 'NotAllowedError'){
+      // El navegador exige que share() salga de un toque reciente, y armar el
+      // PDF tarda unos segundos: a veces el permiso ya venció. No se pierde
+      // el trabajo: el PDF queda listo y el siguiente toque lo envía al tiro.
+      pdfListo = { archivo, folio };
+      const b = document.getElementById('btnShare');
+      b.textContent = 'Enviar PDF listo';
+      toast('PDF listo: toca "Enviar PDF listo" para elegir a quién');
+      return;
+    }
+    console.error('Error al compartir:', e);
+    descargarPdf(archivo, archivo.name);
+    toast('No se pudo abrir el menú de compartir: el PDF se descargó');
+  }
+}
+
+async function compartirComprobante(){
+  // Segundo toque: el PDF ya está armado, se envía sin volver a fotografiar.
+  if(pdfListo){
+    const p = pdfListo; pdfListo = null;
+    document.getElementById('btnShare').textContent = TXT_COMPARTIR;
+    return enviarPdf(p.archivo, p.folio);
+  }
+  refrescarFechaSiCorresponde();
+  if(!confirmarRut()) return;
+  const btn = document.getElementById('btnShare');
+  btn.disabled = true; btn.textContent = 'Preparando PDF…';
+  try{
+    const folio = await asegurarFolio();          // si falla, ya avisó con su toast
+    const blob = await capturarPdf();
+    const archivo = new File([blob], 'Comprobante_' + folio + '.pdf', { type:'application/pdf' });
+    btn.disabled = false; btn.textContent = TXT_COMPARTIR;
+    await enviarPdf(archivo, folio);
+  } catch(e){
+    console.error('No se pudo preparar el PDF para compartir:', e);
+    if(!(e && e.message === 'sin señal') && !(e && e.message === 'sin conexión')){
+      toast('No se pudo preparar el PDF — ' + (e && (e.code || e.message) ? (e.code || e.message) : 'error desconocido'));
+    }
+  } finally {
+    btn.disabled = false;
+    if(!pdfListo) btn.textContent = TXT_COMPARTIR;
+  }
+}
+
+// Saca la foto de la hoja y la envuelve en un PDF carta. La usan dos caminos:
+// guardar (que además lo sube a la ficha) y compartir (que lo manda al cliente).
+// Es el mismo código de siempre, movido tal cual: todos los comentarios de abajo
+// cuentan por qué está hecho así, y siguen valiendo.
+async function capturarPdf(){
+  if(typeof html2canvas !== 'function' || !window.jspdf){
+    throw new Error('no cargó el generador de PDF (revisa tu conexión)');
+  }
+  const nodo = document.getElementById('sheet');
+  // El comprobante tiene que quedar igual se guarde desde el computador o
+  // desde el celular. El intento anterior fue pedirle a html2canvas que
+  // "imaginara" una pantalla de 1000px (windowWidth) -- y eso fue justo lo
+  // que rompió el PDF en el teléfono: el recuadro de recorte se mide sobre
+  // la hoja REAL (en el celular, angosta y muy alta, apilada en una
+  // columna), pero el dibujo se hace sobre la versión re-maquetada a
+  // 1000px, donde la hoja es ancha y baja. Ese recuadro viejo cae en el
+  // lugar equivocado: sale una tira angosta con el resto en blanco. En el
+  // escritorio nunca se nota, porque ahí las dos maquetaciones coinciden.
+  //
+  // Ahora no se imagina nada: se le pone .capturando-pdf al body, el
+  // navegador maqueta la hoja de verdad al ancho de escritorio, y recién
+  // ahí se saca la foto. Lo que se mide y lo que se dibuja son lo mismo.
+  // El scroll también se manda a cero: html2canvas toma la posición de
+  // scroll para calcular coordenadas, y al guardar desde el celular la
+  // página suele estar corrida hacia abajo.
+  //
+  // NO hay respaldo con foreignObjectRendering, y es a propósito. Antes,
+  // cuando el método clásico reventaba con "unexpected eof", se reintentaba
+  // con foreignObjectRendering; ese modo no falla, pero devuelve la hoja
+  // recortada por la izquierda y empezando por la mitad. O sea: el respaldo
+  // adjuntaba en silencio un comprobante ilegible, que es peor que no
+  // adjuntar nada. La causa de aquel "unexpected eof" ya está arreglada (el
+  // ::after del checkbox, ver el CSS). Si aun así falla, que se sepa.
+  const opts = { scale: 2, backgroundColor: '#ffffff', useCORS: true, scrollX: 0, scrollY: 0 };
+  const scrollPrevio = window.pageYOffset || document.documentElement.scrollTop || 0;
+  let canvas;
+  try {
+    document.body.classList.add('capturando-pdf');
+    window.scrollTo(0, 0);
+    // Leer una medida obliga al navegador a re-maquetar en el acto, así la
+    // hoja ya está al ancho nuevo cuando html2canvas la mida. A propósito
+    // NO se usa requestAnimationFrame: no se dispara si la pestaña queda en
+    // segundo plano (pantalla bloqueada, cambio de app), y ahí el guardado
+    // se colgaba para siempre dejando la hoja deformada en pantalla. Se
+    // probó y pasa. setTimeout sí se dispara igual.
+    void nodo.offsetWidth;
+    await new Promise(function(r){ setTimeout(r, 50); });
+    // Red de seguridad: si html2canvas se queda pegado, el finally de abajo
+    // nunca correría y el usuario se queda con el comprobante deformado.
+    const conTope = function(p){
+      return Promise.race([p, new Promise(function(_, rej){
+        setTimeout(function(){ rej(new Error('la generación del PDF se demoró demasiado')); }, 30000);
+      })]);
+    };
+    canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false })));
+  } finally {
+    // Pase lo que pase, la hoja vuelve a como estaba: si esto quedara
+    // puesto, el usuario se queda con el comprobante deformado en pantalla.
+    document.body.classList.remove('capturando-pdf');
+    window.scrollTo(0, scrollPrevio);
+  }
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  // Todo en una sola página: se ajusta el tamaño de la imagen para que
+  // quepa completa (ancho o alto, lo que mande) y se centra en la hoja.
+  const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
+  const w = canvas.width * ratio, h = canvas.height * ratio;
+  pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
+  return pdf.output('blob');
+}
+
 // Capta el comprobante impreso (#sheet, el mismo nodo que usa @media print)
 // como imagen y lo envuelve en un PDF de una página carta -- así el archivo
 // que queda adjunto en la ficha del cliente es igual al que saldría de
@@ -1015,69 +1250,7 @@ async function generarYSubirPdf(c){
       toast('El PDF no se adjuntó: no cargó el generador de PDF (revisa tu conexión)');
       return null;
     }
-    const nodo = document.getElementById('sheet');
-    // El comprobante tiene que quedar igual se guarde desde el computador o
-    // desde el celular. El intento anterior fue pedirle a html2canvas que
-    // "imaginara" una pantalla de 1000px (windowWidth) -- y eso fue justo lo
-    // que rompió el PDF en el teléfono: el recuadro de recorte se mide sobre
-    // la hoja REAL (en el celular, angosta y muy alta, apilada en una
-    // columna), pero el dibujo se hace sobre la versión re-maquetada a
-    // 1000px, donde la hoja es ancha y baja. Ese recuadro viejo cae en el
-    // lugar equivocado: sale una tira angosta con el resto en blanco. En el
-    // escritorio nunca se nota, porque ahí las dos maquetaciones coinciden.
-    //
-    // Ahora no se imagina nada: se le pone .capturando-pdf al body, el
-    // navegador maqueta la hoja de verdad al ancho de escritorio, y recién
-    // ahí se saca la foto. Lo que se mide y lo que se dibuja son lo mismo.
-    // El scroll también se manda a cero: html2canvas toma la posición de
-    // scroll para calcular coordenadas, y al guardar desde el celular la
-    // página suele estar corrida hacia abajo.
-    //
-    // NO hay respaldo con foreignObjectRendering, y es a propósito. Antes,
-    // cuando el método clásico reventaba con "unexpected eof", se reintentaba
-    // con foreignObjectRendering; ese modo no falla, pero devuelve la hoja
-    // recortada por la izquierda y empezando por la mitad. O sea: el respaldo
-    // adjuntaba en silencio un comprobante ilegible, que es peor que no
-    // adjuntar nada. La causa de aquel "unexpected eof" ya está arreglada (el
-    // ::after del checkbox, ver el CSS). Si aun así falla, que se sepa.
-    const opts = { scale: 2, backgroundColor: '#ffffff', useCORS: true, scrollX: 0, scrollY: 0 };
-    const scrollPrevio = window.pageYOffset || document.documentElement.scrollTop || 0;
-    let canvas;
-    try {
-      document.body.classList.add('capturando-pdf');
-      window.scrollTo(0, 0);
-      // Leer una medida obliga al navegador a re-maquetar en el acto, así la
-      // hoja ya está al ancho nuevo cuando html2canvas la mida. A propósito
-      // NO se usa requestAnimationFrame: no se dispara si la pestaña queda en
-      // segundo plano (pantalla bloqueada, cambio de app), y ahí el guardado
-      // se colgaba para siempre dejando la hoja deformada en pantalla. Se
-      // probó y pasa. setTimeout sí se dispara igual.
-      void nodo.offsetWidth;
-      await new Promise(function(r){ setTimeout(r, 50); });
-      // Red de seguridad: si html2canvas se queda pegado, el finally de abajo
-      // nunca correría y el usuario se queda con el comprobante deformado.
-      const conTope = function(p){
-        return Promise.race([p, new Promise(function(_, rej){
-          setTimeout(function(){ rej(new Error('la generación del PDF se demoró demasiado')); }, 30000);
-        })]);
-      };
-      canvas = await conTope(html2canvas(nodo, Object.assign({}, opts, { foreignObjectRendering: false })));
-    } finally {
-      // Pase lo que pase, la hoja vuelve a como estaba: si esto quedara
-      // puesto, el usuario se queda con el comprobante deformado en pantalla.
-      document.body.classList.remove('capturando-pdf');
-      window.scrollTo(0, scrollPrevio);
-    }
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: 'pt', format: 'letter' });
-    const pageW = pdf.internal.pageSize.getWidth();
-    const pageH = pdf.internal.pageSize.getHeight();
-    // Todo en una sola página: se ajusta el tamaño de la imagen para que
-    // quepa completa (ancho o alto, lo que mande) y se centra en la hoja.
-    const ratio = Math.min(pageW / canvas.width, pageH / canvas.height);
-    const w = canvas.width * ratio, h = canvas.height * ratio;
-    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', (pageW - w) / 2, (pageH - h) / 2, w, h);
-    const blob = pdf.output('blob');
+    const blob = await capturarPdf();
 
     const id = Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const nombre = 'Comprobante_' + c.folio + '.pdf';
