@@ -465,6 +465,7 @@ try{ var __t = localStorage.getItem('leon-theme-nuevo'); if(__t==='light'||__t==
       <div class="pf-box" id="pf-sol" style="display:none"></div>
       <div class="pf-box" id="pf-inst" style="display:none"></div>
       <div class="pf-box" id="pf-prox" style="display:none"></div>
+      <div class="pf-box" id="pf-cierre" style="display:none"></div>
     </div>
   </div>
 
@@ -605,7 +606,7 @@ try{ var __t = localStorage.getItem('leon-theme-nuevo'); if(__t==='light'||__t==
          minutos y no hay aviso de "nueva versión" como en el Indicador. El
          número sirve para saber de un vistazo qué versión está cargada:
          si no coincide con la última publicada, falta un refresco forzado. -->
-    <span style="opacity:.55;margin-left:10px">v15</span>
+    <span style="opacity:.55;margin-left:10px">v17</span>
   </span>
 </footer>
 
@@ -649,6 +650,8 @@ let folioReservado = null;
 let equipoSel = null;      // equipo elegido: { idx (posición REAL en r.equipos), marca, modelo }
 let solMarcadas = {};      // id de solicitud -> true, las que se cierran al guardar
 let durElegida = null;     // meses elegidos para la próxima mantención (null = la de la ficha)
+let cierreOn = true;       // casillero "marcar la cotización como concretada"
+let avisoCierre = '';      // texto para el toast final de guardar
 let nombreTecnico = '';    // nombre de quien tiene la sesión, desde /usuarios/{uid}
 
 function setSyncStatus(state, label){
@@ -853,7 +856,7 @@ function onPickCliente(key){
   const r = key ? clientesIndex[key] : null;
   const selEq = document.getElementById('selEquipo');
   const wrapEq = document.getElementById('wrap-select-equipo');
-  equipoSel = null; solMarcadas = {}; durElegida = null;
+  equipoSel = null; solMarcadas = {}; durElegida = null; cierreOn = true;
   if(!r){ wrapEq.style.display='none'; renderPanelFicha(); return; }
   document.getElementById('buscaCliente').value = r.cliente || '';
 
@@ -983,6 +986,15 @@ function renderPanelFicha(){
   const r = clienteActivo ? clientesIndex[clienteActivo] : null;
   if(!r){ panel.style.display = 'none'; return; }
   panel.style.display = '';
+  // En una corrección no hay acciones sobre la ficha (vencimiento, equipo,
+  // solicitudes): ya ocurrieron cuando se emitió el comprobante original. Lo
+  // único que sigue vivo es el estado de la cotización, porque cambiar el
+  // PPTO al corregir tiene que arrastrarlo.
+  if(modoCorreccion){
+    ['pf-cot','pf-sol','pf-inst','pf-prox'].forEach(id=>{ document.getElementById(id).style.display = 'none'; });
+    pintarCierre();
+    return;
+  }
 
   // 1. Cotizaciones: se ofrecen, no se aplican solas. Las rechazadas no sirven.
   const boxCot = document.getElementById('pf-cot');
@@ -1024,6 +1036,88 @@ function renderPanelFicha(){
   actualizarPanelDinamico();
 }
 
+// ═══════════════════════════════════════
+// COTIZACIÓN CONCRETADA — si el PPTO del comprobante es el N° de una cotización
+// pendiente de ESTE cliente, se ofrece marcarla como concretada en su ficha del
+// Indicador. Solo toca `estado` de esa cotización en la ficha (lo que alimenta
+// «dinero en juego» y el valor de referencia). NO toca el registro del
+// Cotizador (Aceptada / Descartada, grupos, liquidación): ese sigue mandando él.
+// La corrección manda sobre esto: el comprobante recuerda qué cotización cerró y
+// qué estado tenía antes (`cotizacionCerrada`), y si al corregir cambia el PPTO
+// o el cliente, la cotización vuelve a como estaba.
+// ═══════════════════════════════════════
+function nroDePpto(t){
+  const m = String(t||'').trim().match(/^(?:n\s*[°º.]?\s*)?(\d+)$/i);
+  return m ? m[1] : null;
+}
+function cotAbiertaPorNro(key, nro){
+  const r = key ? clientesIndex[key] : null;
+  if(!r || !nro) return null;
+  return (r.cotizaciones||[]).find(c=>c && String(c.nro) === String(nro) && c.estado !== 'concretada') || null;
+}
+// Qué pasaría al guardar: { revertir:{clienteId,nro,antes}|null, cerrar:{clienteId,nro}|null, cot, texto }
+function planCierre(){
+  const nro = nroDePpto(document.getElementById('fPpto').value);
+  const plan = { revertir:null, cerrar:null, cot:null, hayCheck:false, texto:'' };
+  if(modoCorreccion){
+    const v = modoCorreccion.cierre;              // lo que cerró el comprobante original
+    const key = clienteActivo || modoCorreccion.clienteId;
+    const igual = v && nro && String(v.nro) === String(nro) && v.clienteId === key;
+    if(v && igual){ plan.texto = 'La cotización <b>N°' + escHtml(String(v.nro)) + '</b> sigue marcada como concretada por este comprobante.'; return plan; }
+    if(v){
+      plan.revertir = { clienteId:v.clienteId, nro:v.nro, antes:v.antes || 'pendiente' };
+      plan.texto = 'La cotización <b>N°' + escHtml(String(v.nro)) + '</b> la había cerrado este comprobante: al guardar vuelve a <b>' +
+        escHtml(plan.revertir.antes) + '</b>. ';
+    }
+    const cot = cotAbiertaPorNro(key, nro);
+    if(cot){ plan.cot = cot; plan.hayCheck = true; if(cierreOn) plan.cerrar = { clienteId:key, nro:nro }; }
+    return plan;
+  }
+  const cot = cotAbiertaPorNro(clienteActivo, nro);
+  if(cot){ plan.cot = cot; plan.hayCheck = true; if(cierreOn) plan.cerrar = { clienteId:clienteActivo, nro:nro }; }
+  return plan;
+}
+let ultimoHtmlCierre = null;
+function pintarCierre(){
+  const box = document.getElementById('pf-cierre');
+  if(!box) return;
+  const plan = planCierre();
+  let html = '';
+  if(plan.texto || plan.hayCheck){
+    html = '<h4>Cotización</h4>' + (plan.texto ? '<div class="pf-row"><span>' + plan.texto + '</span></div>' : '');
+    if(plan.hayCheck){
+      html += '<label class="pf-chk"><input type="checkbox" ' + (cierreOn ? 'checked' : '') + ' onchange="cierreOn=this.checked; pintarCierre();"/> <span>Marcar la cotización <b>N°' +
+        escHtml(String(plan.cot.nro)) + '</b> (' + escHtml(formatoMonto(plan.cot.monto) || 'sin monto') + ')' +
+        (plan.cot.estado === 'rechazada' ? ' <small>(estaba rechazada)</small>' : '') + ' como concretada al guardar</span></label>';
+    }
+  }
+  if(html !== ultimoHtmlCierre){ box.innerHTML = html; ultimoHtmlCierre = html; }
+  box.style.display = html ? '' : 'none';
+}
+// Marca como concretada y devuelve el estado que tenía (null si no cambió nada).
+function cerrarCotizacionEnFicha(key, nro){
+  let antes = null;
+  return db.ref('leon_clientes/' + key + '/cotizaciones').transaction(function(lista){
+    antes = null;
+    if(!Array.isArray(lista)) return lista;
+    return lista.map(function(x){
+      if(x && String(x.nro) === String(nro) && x.estado !== 'concretada'){ antes = x.estado || 'pendiente'; return Object.assign({}, x, { estado:'concretada' }); }
+      return x;
+    });
+  }).then(function(){ return antes; });
+}
+// Vuelve la cotización a su estado anterior, SOLO si sigue concretada: si
+// Isaac la cambió a mano después, esa decisión es suya y no se pisa.
+function revertirCotizacionEnFicha(r){
+  return db.ref('leon_clientes/' + r.clienteId + '/cotizaciones').transaction(function(lista){
+    if(!Array.isArray(lista)) return lista;
+    return lista.map(function(x){
+      if(x && String(x.nro) === String(r.nro) && x.estado === 'concretada') return Object.assign({}, x, { estado:r.antes || 'pendiente' });
+      return x;
+    });
+  });
+}
+
 function marcarSolicitud(id, on){ if(on) solMarcadas[id] = true; else delete solMarcadas[id]; }
 
 function usarCotizacion(i){
@@ -1037,6 +1131,8 @@ function usarCotizacion(i){
 }
 
 function actualizarPanelDinamico(){
+  pintarCierre();
+  if(modoCorreccion) return;
   const r = clienteActivo ? clientesIndex[clienteActivo] : null;
   const boxInst = document.getElementById('pf-inst'), boxProx = document.getElementById('pf-prox');
   if(!r || !boxInst || !document.getElementById('pf-inst-txt')) return;
@@ -1125,6 +1221,7 @@ const CLAVE_BORRADOR = 'leon-comprobante-borrador';
 const NO_BORRADOR = ['empRut','empDir','empFono','empWeb','fDia','fMes','fAno'];
 let borradorPendiente = null;   // mientras el aviso está a la vista no se autoguarda
 let modoReimpresion = null;     // { folio } cuando se está reimprimiendo uno ya guardado
+let modoCorreccion = null;      // { folio } cuando se está corrigiendo uno ya guardado
 let tBorrador = null;
 
 function camposBorrador(){
@@ -1136,7 +1233,7 @@ function tieneContenido(){
     || motivosSeleccionados().length > 0;
 }
 function guardarBorradorYa(){
-  if(borradorPendiente || modoReimpresion) return;
+  if(borradorPendiente || modoReimpresion || modoCorreccion) return;
   try{
     if(!tieneContenido()){ localStorage.removeItem(CLAVE_BORRADOR); return; }
     const valores = {};
@@ -1254,6 +1351,7 @@ function pintarEmitidos(){
     '<div class="em-fila"><div class="em-info"><b>N° '+escHtml(String(f).padStart(6,'0'))+'</b> · '+escHtml(fechaCorta(c.fecha))+' · '+
       escHtml((c.cliente||{}).nombre||'Sin nombre')+
       '<small>'+escHtml([(c.motivos||[]).join(', '), (c.facturacion||{}).monto].filter(Boolean).join(' · ')||'—')+'</small></div>'+
+      '<button class="btn primary" type="button" onclick="corregirEmitido(\''+escAttr(f)+'\')">Corregir</button>'+
       '<button class="btn" type="button" onclick="reimprimirEmitido(\''+escAttr(f)+'\')">Reimprimir</button>'+
       '<button class="btn" type="button" onclick="usarEmitidoComoBase(\''+escAttr(f)+'\')">Usar como base</button></div>'
   ).join('') : '<div class="combo-vacio">Ningún comprobante coincide.</div>';
@@ -1281,12 +1379,11 @@ function marcarMotivos(lista){
   document.getElementById('motivoOtro').value = otros && otros.indexOf(':') > 0 ? otros.slice(otros.indexOf(':')+1).trim() : '';
 }
 
-function reimprimirEmitido(f){
-  const c = emitidos && emitidos[f];
-  if(!c) return;
+// Carga un comprobante guardado en el formulario, con SU folio y SU fecha.
+// La comparten reimprimir y corregir; cada una pone después su propio modo.
+function cargarEmitidoEnFormulario(c, f){
   clearTimeout(tBorrador);
   cerrarEmitidos();
-  // Un comprobante ya guardado no se vuelve a escribir desde aquí: nada de ficha.
   clienteActivo = null; equipoSel = null; solMarcadas = {}; durElegida = null;
   document.getElementById('buscaCliente').value = '';
   renderPanelFicha();
@@ -1304,17 +1401,186 @@ function reimprimirEmitido(f){
   }
   folioReservado = isNaN(+f) ? f : +f;
   document.getElementById('folioVal').textContent = String(f).padStart(6,'0');
+  document.getElementById('btnSave').textContent = 'Guardar comprobante';
+  window.scrollTo(0, 0);
+}
+
+function reimprimirEmitido(f){
+  const c = emitidos && emitidos[f];
+  if(!c) return;
+  modoCorreccion = null;
+  cargarEmitidoEnFormulario(c, f);
   modoReimpresion = { folio: f };
   document.getElementById('btnSave').disabled = true;
   document.getElementById('aviso-reimp-txt').innerHTML = 'Reimprimiendo el comprobante <b>N° ' + escHtml(String(f).padStart(6,'0')) +
     '</b>, ya guardado. Imprimir y Compartir usan ese número; Guardar está bloqueado.';
   document.getElementById('aviso-reimp').style.display = '';
-  window.scrollTo(0, 0);
 }
-function salirReimpresion(){
+
+// CORREGIR: reemplaza un comprobante ya guardado (mismo N°, misma fecha salvo
+// que se cambie) y su PDF adjunto en la ficha. Se lee la versión actual de la
+// base, no la de la lista, que pudo quedar vieja.
+async function corregirEmitido(f){
+  if(!db){ toast('Todavía sin conexión: espera unos segundos'); return; }
+  let c;
+  try{ c = (await db.ref('leon_comprobantes/' + f).once('value')).val(); }
+  catch(e){ toast('No se pudo leer el comprobante: revisa tu conexión'); return; }
+  if(!c){ toast('Ese comprobante ya no existe en la base'); return; }
+  cargarEmitidoEnFormulario(c, f);
   modoReimpresion = null;
+  modoCorreccion = { folio: f, cierre: c.cotizacionCerrada || null, clienteId: c.clienteId || null };
+  cierreOn = true;
+  // Se mantiene el vínculo con su cliente para poder reemplazar el PDF en su
+  // ficha; si en el formulario se elige a otro, el PDF se pasa a esa ficha.
+  if(c.clienteId && clientesIndex[c.clienteId]){
+    clienteActivo = c.clienteId;
+    document.getElementById('buscaCliente').value = clientesIndex[c.clienteId].cliente || '';
+  }
+  document.getElementById('btnSave').disabled = false;
+  document.getElementById('btnSave').textContent = 'Guardar corrección';
+  document.getElementById('aviso-reimp-txt').innerHTML = 'Corrigiendo el comprobante <b>N° ' + escHtml(String(f).padStart(6,'0')) +
+    '</b>. Al guardar se reemplaza el registro y su PDF en la ficha; la versión anterior queda respaldada en el registro. ' +
+    'No se toca el vencimiento, el equipo ni las solicitudes del cliente.';
+  document.getElementById('aviso-reimp').style.display = '';
+  renderPanelFicha();
+}
+
+// Saca de la ficha los documentos con ese nombre y, si corresponde, agrega el
+// nuevo. Transacción sobre su propio hijo: no pisa nada más de la ficha.
+// Devuelve los documentos que se sacaron.
+function cambiarDocEnFicha(key, nombre, agregar){
+  let sacados = [];
+  return db.ref('leon_clientes/' + key + '/documentos').transaction(function(lista){
+    sacados = [];
+    lista = Array.isArray(lista) ? lista : [];
+    const resto = lista.filter(function(d){
+      if(d && d.nombre === nombre){ sacados.push(d); return false; }
+      return true;
+    });
+    if(agregar && !resto.some(function(d){ return d && d.id === agregar.id; })) resto.push(agregar);
+    return resto;
+  }).then(function(){
+    // Los PDF sacados ya no cuelgan de ninguna ficha: se liberan de la base
+    // (cada uno pesa ~300 KB y el plan gratuito tiene 1 GB). Los antiguos de
+    // Storage no tienen entrada en leon_docs y se dejan como están.
+    sacados.forEach(function(d){
+      if(d.store === 'rtdb' && d.id && !(agregar && agregar.id === d.id)){
+        db.ref('leon_docs/' + d.id).remove().catch(function(e){ console.warn('No se pudo liberar el PDF viejo:', e); });
+      }
+    });
+    return sacados;
+  });
+}
+
+async function guardarCorreccion(){
+  const folio = modoCorreccion.folio;
+  if(!document.getElementById('cCliente').value.trim()){
+    toast('Falta el nombre del cliente'); document.getElementById('cCliente').focus(); return;
+  }
+  refrescarFechaSiCorresponde();
+  if(fechaTocadaAMano && !fechaDeLasCajas()){
+    pintarFecha(false); toast('Revisa la fecha del comprobante: falta un dato o no es válida'); document.getElementById('fDia').focus(); return;
+  }
+  if(!confirmarRut()) return;
+  if(MODO_PRUEBA){ toast('Modo prueba: no se escribió nada'); return; }
+  if(!db){ toast('Todavía sin conexión: espera unos segundos'); return; }
+  if(!confirm('Vas a reemplazar el comprobante N° ' + String(folio).padStart(6,'0') + ' y su PDF adjunto.\n\n' +
+              'La versión anterior queda respaldada dentro del registro. ¿Continuar?')) return;
+
+  const btn = document.getElementById('btnSave');
+  btn.disabled = true;
+  setSyncStatus('syncing', 'guardando corrección…');
+  let docNuevo = null;
+  try{
+    const refC = db.ref('leon_comprobantes/' + folio);
+    const viejo = (await refC.once('value')).val();
+    if(!viejo) throw new Error('el comprobante ya no existe en la base');
+
+    const c = recolectarComprobante();
+    c.folio = viejo.folio != null ? viejo.folio : c.folio;
+    c.clienteId = clienteActivo || viejo.clienteId || null;
+    c.creadoEn = viejo.creadoEn || Date.now();
+    c.corregidoEn = Date.now();
+    // La versión anterior se guarda tal cual dentro del registro: un error al
+    // corregir nunca pierde lo que había.
+    const previas = Object.assign({}, viejo.correcciones || {});
+    const copia = Object.assign({}, viejo); delete copia.correcciones;
+    previas[String(Date.now())] = copia;
+    c.correcciones = previas;
+    // Lo que el comprobante cerró se conserva, salvo que esta corrección lo
+    // devuelva (ver planCierre). `set` reemplaza el nodo: hay que traerlo.
+    const planCot = planCierre();
+    c.cotizacionCerrada = planCot.revertir ? null : (viejo.cotizacionCerrada || null);
+
+    // El PDF se arma PRIMERO: si falla, no se ha modificado nada.
+    const key = c.clienteId;
+    const hayFicha = key ? (await db.ref('leon_clientes/' + key).once('value')).exists() : false;
+    if(hayFicha){
+      docNuevo = await generarYSubirPdf(c);
+      if(!docNuevo) throw new Error('no se pudo generar el PDF, no se modificó nada');
+    }
+
+    try{ await refC.set(c); }
+    catch(e){
+      if(docNuevo) db.ref('leon_docs/' + docNuevo.id).remove().catch(function(){});
+      throw e;
+    }
+
+    let avisoFicha = '';
+    try{
+      const nombre = 'Comprobante_' + c.folio + '.pdf';
+      // Si se cambió de cliente, el PDF sale de la ficha anterior.
+      if(viejo.clienteId && viejo.clienteId !== key) await cambiarDocEnFicha(viejo.clienteId, nombre, null);
+      if(docNuevo) await cambiarDocEnFicha(key, nombre, docNuevo);
+      else if(!key) avisoFicha = ' Sin cliente vinculado: no hay PDF que reemplazar.';
+      else avisoFicha = ' La ficha ya no existe: no hay dónde adjuntar el PDF.';
+    }catch(e){
+      console.error('No se pudo reemplazar el PDF en la ficha:', e);
+      avisoFicha = ' OJO: el registro quedó corregido, pero el PDF de la ficha no se pudo reemplazar — avísame.';
+    }
+
+    // La corrección manda sobre el estado de la cotización: si cambió el PPTO
+    // (o el cliente), la que se había cerrado vuelve a como estaba; y si ahora
+    // apunta a otra, se ofrece cerrarla.
+    try{
+      if(planCot.revertir) await revertirCotizacionEnFicha(planCot.revertir);
+      if(planCot.cerrar){
+        const antes = await cerrarCotizacionEnFicha(planCot.cerrar.clienteId, planCot.cerrar.nro);
+        if(antes) await refC.update({ cotizacionCerrada:{ nro:String(planCot.cerrar.nro), antes:antes, clienteId:planCot.cerrar.clienteId } });
+      }
+    }catch(e){
+      console.error('No se pudo ajustar el estado de la cotización:', e);
+      avisoFicha += ' OJO: no se pudo ajustar el estado de la cotización en la ficha — revísalo en el Indicador.';
+    }
+
+    // Queda abierto como reimpresión del comprobante corregido: se puede
+    // imprimir o compartir con el mismo N°, sin soltar el folio.
+    modoCorreccion = null;
+    modoReimpresion = { folio: folio };
+    btn.textContent = 'Guardar comprobante';
+    btn.disabled = true;
+    document.getElementById('aviso-reimp-txt').innerHTML = 'Comprobante <b>N° ' + escHtml(String(folio).padStart(6,'0')) +
+      '</b> corregido y guardado. Imprimir y Compartir usan ese número.' + escHtml(avisoFicha);
+    emitidos = null;
+    renderPanelFicha();
+    setSyncStatus('ok', 'conectado');
+    toast('Comprobante N° ' + String(folio).padStart(6,'0') + ' corregido');
+  }catch(e){
+    console.error('Error corrigiendo el comprobante:', e);
+    setSyncStatus('err', 'error al guardar');
+    toast('No se corrigió nada — ' + (e && (e.code || e.message) ? (e.code || e.message) : 'error desconocido'));
+    btn.disabled = false;
+  }
+}
+
+function salirReimpresion(){
+  modoReimpresion = null; modoCorreccion = null; cierreOn = true;
   document.getElementById('aviso-reimp').style.display = 'none';
   document.getElementById('btnSave').disabled = false;
+  document.getElementById('btnSave').textContent = 'Guardar comprobante';
+  clienteActivo = null; equipoSel = null;
+  document.getElementById('buscaCliente').value = '';
+  renderPanelFicha();
   ['cCliente','cRut','cDir','cComuna','cInfo','cFono'].forEach(id=>{ document.getElementById(id).value = ''; });
   document.getElementById('cCiudad').value = 'Santiago';
   ['fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos','tAComp','tAVentIdm','tAVentOdm','tVoltaje',
@@ -1330,7 +1596,7 @@ function salirReimpresion(){
 function usarEmitidoComoBase(f){
   const c = emitidos && emitidos[f];
   if(!c) return;
-  if(modoReimpresion) salirReimpresion();
+  if(modoReimpresion || modoCorreccion) salirReimpresion();
   cerrarEmitidos();
   liberarFolio();
   const idCli = c.clienteId;
@@ -1493,7 +1759,7 @@ document.addEventListener('visibilitychange', function(){
 function limpiarFormulario(){
   // En una reimpresión "limpiar" es salir de ella: soltaría el folio y el
   // siguiente Imprimir reservaría un número nuevo para un comprobante viejo.
-  if(modoReimpresion){ salirReimpresion(); return; }
+  if(modoReimpresion || modoCorreccion){ salirReimpresion(); return; }
   if(!confirm('¿Limpiar todos los campos del formulario? (el cliente seleccionado se mantiene)')) return;
   borrarBorrador();
   ['cInfo','fMonto','fServicio','fPpto','fOc','eMarca','eRefri','eModelo','eTecnicos',
@@ -1501,7 +1767,7 @@ function limpiarFormulario(){
    'trabajo','obs','hIn','hOut'].forEach(id=>{ document.getElementById(id).value=''; });
   document.querySelectorAll('#motivos input[type=checkbox]').forEach(c=>c.checked = false);
   rellenarTecnico();
-  solMarcadas = {}; durElegida = null;
+  solMarcadas = {}; durElegida = null; cierreOn = true;
   toggleVencRow();
   renderPanelFicha();
   // Limpiar el formulario es empezar un comprobante nuevo: el numero tambien
@@ -1654,6 +1920,7 @@ function guardarComprobante(){
     document.getElementById('fDia').focus();
     return;
   }
+  if(modoCorreccion){ guardarCorreccion(); return; }
   if(modoReimpresion){ toast('Este comprobante ya está guardado: sal de la reimpresión para emitir uno nuevo'); return; }
   // Tampoco se gasta un folio con un RUT que no cuadra, salvo que se confirme.
   if(!confirmarRut()) return;
@@ -1690,9 +1957,9 @@ function guardarComprobanteConFolio(){
     })
     .then(()=>{
       setSyncStatus('ok', 'conectado');
-      toast('Comprobante N° ' + c.folio + ' guardado');
+      toast('Comprobante N° ' + c.folio + ' guardado' + avisoCierre); avisoCierre = '';
       document.getElementById('btnSave').disabled = false;
-      solMarcadas = {}; durElegida = null; renderPanelFicha();
+      solMarcadas = {}; durElegida = null; cierreOn = true; renderPanelFicha();
       borrarBorrador();
       // Liberar el folio: este comprobante ya quedo guardado, el siguiente
       // tiene que pedir su propio numero.
@@ -1938,6 +2205,7 @@ function actualizarFichaCliente(key, c){
   // durante esos segundos cambiaría lo que se guarda sin avisar.
   const solCerrar = Object.keys(solMarcadas);
   const durNueva = durElegida;
+  const planCot = planCierre();
   const instalar = (motivoMarcado('Instalación') && equipoSel)
     ? { idx: equipoSel.idx, marca: equipoSel.marca, modelo: equipoSel.modelo,
         garantia: (document.getElementById('pfGarantia')||{}).value || '' }
@@ -2012,6 +2280,16 @@ function actualizarFichaCliente(key, c){
         } else {
           toast('No se anotó la instalación: el equipo ya no está donde estaba en la ficha');
         }
+      }
+
+      if(planCot.cerrar && planCot.cerrar.clienteId === key){
+        // Se anota en el comprobante qué cerró y cómo estaba: así una corrección
+        // posterior puede devolverla a su estado anterior.
+        tareas.push(cerrarCotizacionEnFicha(key, planCot.cerrar.nro).then(function(antes){
+          if(!antes) return null;
+          avisoCierre = ' · cotización N°' + planCot.cerrar.nro + ' marcada como concretada';
+          return db.ref('leon_comprobantes/' + c.folio).update({ cotizacionCerrada:{ nro:String(planCot.cerrar.nro), antes:antes, clienteId:key } });
+        }));
       }
 
       if(solCerrar.length){
